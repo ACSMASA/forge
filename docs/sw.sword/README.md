@@ -12,7 +12,7 @@ After pulling sw.sword (or switching branches), from the forge root:
 
 ```sh
 python -I tools/build_dec_index.py C:/MASARepo/sw.sword C:/MASARepo/sw.models C:/MASARepo/sw.soult docs/sw.sword/dec_function_index.md
-python -I tools/check_themes.py   # exit 1 + list of stale paths/anchors in THEMES.md and the agent prompt
+python -I tools/check_themes.py sw.sword   # exit 1 + list of stale paths/anchors in THEMES.md and the agent prompt (no argument: every kit)
 ```
 
 When the navigator returns **Map updates**, apply them to `THEMES.md` and re-run the checker.

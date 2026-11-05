@@ -1,11 +1,12 @@
-"""Check that every code path and anchor cited in forge docs still exists.
+"""Check that every code path and anchor cited in forge navigator docs still exists.
 
-Usage (from the forge root): python -I tools/check_themes.py [file.md ...]
-Defaults to docs/sw.sword/THEMES.md and .claude/agents/sw-sword-navigator.md.
+Usage (from the forge root): python -I tools/check_themes.py [kit-or-file ...]
+With no argument, checks every kit in KITS. An argument is a kit name (e.g. `directai`) or one of a kit's files.
 Repos are resolved as siblings of forge (C:/MASARepo/<repo>). Exit code 1 if anything is missing.
 
 Checked tokens (inside backticks):
-  - paths starting with an alias (sim/, int/, DEC/) or a known root (src/, data/, build/, sw.models/, sw.soult/, directai/)
+  - paths starting with a kit alias, a kit root dir (resolved in the kit's repo), or another repo name (`sw.models/...`)
+  - absolute paths under the MASA root (`C:/MASARepo/...`)
   - `path::text`  -> path exists and contains text (recursively if path is a directory)
   - bare file names (`Foo.cpp`, globs allowed) -> exist under the last directory cited earlier on the same line
 """
@@ -16,29 +17,50 @@ import sys
 
 FORGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MASA = os.path.dirname(FORGE)
-SWORD = os.path.join(MASA, "sw.sword")
+REPOS = ("sw.sword/", "sw.models/", "sw.soult/", "directai/")
 
-ALIASES = {
-    "sim/": "src/libraries/simulation/",
-    "int/": "data/app-data/resources/integration/",
-    "DEC/": "src/libraries/simulation/Decision/",
+KITS = {
+    "sw.sword": {
+        "repo": "sw.sword",
+        "aliases": {
+            "sim/": "src/libraries/simulation/",
+            "int/": "data/app-data/resources/integration/",
+            "DEC/": "src/libraries/simulation/Decision/",
+        },
+        "roots": ("src/", "data/", "build/"),
+        "allow_missing": {"int/Reports.lua"},  # generated at build time, gitignored
+        "files": ["docs/sw.sword/THEMES.md", ".claude/agents/sw-sword-navigator.md"],
+    },
+    "directai": {
+        "repo": "directai",
+        "aliases": {
+            "spark/": "src/libraries/plugins/spark/",
+            "val/": "src/libraries/spark/validation/",
+            "core/": "src/libraries/directai/",
+        },
+        "roots": ("src/", "data/", "build/", "etc/"),
+        "allow_missing": set(),
+        "files": ["docs/directai/THEMES.md", ".claude/agents/dai-navigator.md"],
+    },
 }
-SWORD_ROOTS = ("src/", "data/", "build/")
-OTHER_REPOS = ("sw.models/", "sw.soult/", "directai/")
-ALLOW_MISSING = {"int/Reports.lua"}  # generated at build time, gitignored
-BARE = re.compile(r"^[A-Za-z0-9_*.]+\.(cpp|h|lua|xml|go|py)$")
+
+BARE = re.compile(r"^[A-Za-z0-9_*.]+\.(cpp|h|lua|xml|xsd|go|py|bms)$")
 TICK = re.compile(r"`([^`\n]+)`")
+ABS = re.compile(r"^[A-Za-z]:/MASARepo/")
 
 
-def resolve(token):
+def resolve(token, kit):
     """Return an absolute path (may contain globs) for a path-like token, else None."""
-    for alias, real in ALIASES.items():
+    repo = os.path.join(MASA, kit["repo"])
+    for alias, real in kit["aliases"].items():
         if token.startswith(alias):
-            return os.path.join(SWORD, real + token[len(alias):])
-    if token.startswith(SWORD_ROOTS):
-        return os.path.join(SWORD, token)
-    if token.startswith(OTHER_REPOS):
+            return os.path.join(repo, real + token[len(alias):])
+    if token.startswith(kit["roots"]):
+        return os.path.join(repo, token)
+    if token.startswith(REPOS):
         return os.path.join(MASA, token)
+    if ABS.match(token) and " " not in token:
+        return os.path.join(MASA, token[len("C:/MASARepo/"):])
     return None
 
 
@@ -59,7 +81,7 @@ def contains(path, text):
     return False
 
 
-def check(md):
+def check(md, kit):
     errors, checked = [], 0
     with open(md, encoding="utf-8") as fh:
         lines = fh.read().splitlines()
@@ -68,9 +90,9 @@ def check(md):
         for token in TICK.findall(line):
             token = token.strip()
             path_part, _, anchor = token.partition("::")
-            if token in ALLOW_MISSING:
+            if token in kit["allow_missing"]:
                 continue
-            target = resolve(path_part)
+            target = resolve(path_part, kit)
             if target is None:
                 if last_dir and BARE.match(token):
                     checked += 1
@@ -89,12 +111,31 @@ def check(md):
     return errors, checked
 
 
+def targets(args):
+    """Yield (md path, kit) pairs for the requested kits/files."""
+    if not args:
+        args = list(KITS)
+    for arg in args:
+        if arg in KITS:
+            for f in KITS[arg]["files"]:
+                yield os.path.join(FORGE, f), KITS[arg]
+            continue
+        path = os.path.abspath(arg)
+        owner = next((k for k in KITS.values()
+                      if any(os.path.samefile(path, os.path.join(FORGE, f)) for f in k["files"]
+                             if os.path.exists(os.path.join(FORGE, f)))), None)
+        if owner is None:
+            sys.exit(f"{arg}: not a kit name ({', '.join(KITS)}) nor a file of a kit")
+        yield path, owner
+
+
 def main():
-    files = sys.argv[1:] or [os.path.join(FORGE, "docs/sw.sword/THEMES.md"),
-                             os.path.join(FORGE, ".claude/agents/sw-sword-navigator.md")]
     total_err, total = [], 0
-    for md in files:
-        errs, n = check(md)
+    for md, kit in targets(sys.argv[1:]):
+        if not os.path.exists(md):
+            total_err.append(f"{md}: file missing")
+            continue
+        errs, n = check(md, kit)
         total_err += errs
         total += n
     for e in total_err:
