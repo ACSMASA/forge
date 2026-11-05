@@ -234,7 +234,7 @@ Path aliases:
   - There is **no resume hook**: a skill knows it resumed only because its state is non-empty.
 - **`integration.getPersistentKey(params)`:**
   - It **errors on a param type without `hash`**: PhaseLine, AreaOfResponsibility, Direction, FragOrder,
-    EquipmentType, CBRNProtection, HumanWound, MeKnowledge. Classes with `hash` (commit `aa0b276a84`): Agent,
+    EquipmentType, CBRNProtection, HumanWound (MeKnowledge inherits `Agent:hash`, corrected at step 6). Classes with `hash` (commit `aa0b276a84`): Agent,
     AgentKnowledge, Area, UrbanBlock, UnitType, ResourceNode, ReachingArea, Point, PlannedObject, Object, Crowd,
     Company.
   - It iterates with `pairs`, so key order may vary across a reload: Lua 5.2 hash seed, to verify.
@@ -356,7 +356,7 @@ Path aliases:
   - CLI: `--mission NAME | --task T | --all`, `--db`, `--model`, `--root`. Exit 1 on errors; warnings are separate.
   - Validate `--all` on the current branch and triage until there are no false positives.
     `--mission "COMBAT - Attack objective"` must be clean.
-- [ ] **6. `tools/checkpoint_lint.py`.** Heuristic: warnings are upper bounds, each with file:line. Per skill Lua it
+- [x] **6. `tools/checkpoint_lint.py`.** Heuristic: warnings are upper bounds, each with file:line. Per skill Lua it
   flags:
   - `self.*` fields assigned outside `create` with no skill-state mirror
   - `getSkillState` in a skill whose parameter types lack `hash`
@@ -442,3 +442,8 @@ Path aliases:
   unfed, …); reference mission clean. Refinement: absent optional **scalar** → nil → `<default>` applies; absent
   **object** → `NIL`, default skipped (per-converter, computed from DEC_Decision.cpp). Parallel labels and
   `dia5/test/` are outside checkstage; it scans all of `decisional/` (taskgroups submodule empty locally).
+- 2026-11-05 step 6: `checkpoint_lint.py`, 9 rules. All known-fragile cases flagged (or-true ×2, table-eq, Unmoor
+  timer, DetachUnit createEmptyUnit, IssueMission, OperateACheckpoint flags). Tuned: hashability over concrete
+  classes (abstract LocalizedElement was a false positive), fields set in create/start/select/started not "lost",
+  reports split from world side effects, default-task skills exempt from no-clear. `--all`: side-effect 7,
+  key-order 16 (incl. MoveAlong and Default: the "known-safe" skills are exposed to the pairs-order hazard).

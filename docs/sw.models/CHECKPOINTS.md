@@ -37,7 +37,7 @@ Written from sw.models `master` @ `d2f78fafcd`, sw.sword `master` @ `51bdc0ec9e`
 | Hazard | Effect after resume | Anchor | Model-side fix |
 |---|---|---|---|
 | **Whole-state drop**: one non-serializable value anywhere in the brain's store (function, userdata, a knowledge object through its fields, a cycle) | the brain's whole state is not written (log "Error serializing persistent state" only): every task restarts at stage 1, every skill state is empty | `int/SimulationIntegration.lua::error( "cannot serialize " .. type( v ) )`, `sim/Decision/DEC_Decision.h::Error serializing persistent state of` | persist plain data only (§4); `tools/checkpoint_lint.py` flags stored objects |
-| **Unhashable parameter**: `getSkillState` on a skill whose params include a class without `hash` (PhaseLine, AreaOfResponsibility, Direction, FragOrder, EquipmentType, CBRNProtection, HumanWound, MeKnowledge…) | Lua error in the skill every tick | `int/SimulationIntegration.lua::has no 'hash' function defined.` | add `hash` to the class (`mission_index.md` §1 hashable column), or do not persist in that skill |
+| **Unhashable parameter**: `getSkillState` on a skill whose params can hold a concrete class without `hash`, own or inherited (PhaseLine, AreaOfResponsibility, Direction, FragOrder, EquipmentType, CBRNProtection, HumanWound; MeKnowledge inherits `Agent:hash`) | Lua error in the skill every tick | `int/SimulationIntegration.lua::has no 'hash' function defined.` | add `hash` to the class (`mission_index.md` §1 hashable column), or do not persist in that skill |
 | **`pairs` key order**: the key concatenates params in `pairs` order, unsorted; stock Lua 5.2.4 seeds string hashing per state (`directai/include/lua/lua.h::LUA_VERSION_RELEASE`) | with ≥ 2 params the key may differ after resume → empty state | `int/SimulationIntegration.lua::for k, v in pairs( value ) do` | persist in a skill with one parameter, or under a key you build yourself (sorted) in the Default skill's state |
 | **`or default` on booleans**: `getSkillState( self ).x or true` | a saved `false` becomes `true` | `dia5/navy/agent/skills/EmbarkToLandingShipDock.lua::askForLoadWhenFinished or true` | test `~= nil` |
 | **Table equality**: `x == {}` | always false | `dia5/navy/agent/skills/LoadUponRequest.lua::== {}` | `next( x ) == nil` |
@@ -51,6 +51,10 @@ Written from sw.models `master` @ `d2f78fafcd`, sw.sword `master` @ `51bdc0ec9e`
 | **Persisting `NIL`** (the absent-parameter sentinel) | serialized as `{}`, reloaded as an empty table: `x ~= NIL` becomes true | `spark/compatibility.lua::setsharedglobal( "NIL"` | persist a boolean "absent" instead |
 | **Non-finite numbers**: `tostring( math.huge )` gives a name such as `inf`, reloaded as a global (nil) | the value becomes nil | `int/SimulationIntegration.lua::return tostring( v )` | do not persist infinities / NaN |
 | **Removed or renumbered stage** between save and resume (model edited) | the task resumes at another stage or counts as finished | `spark/task.lua::self.state.seqStageIndex = self.stageIndex` | none (do not edit models under a running exercise) |
+
+`tools/checkpoint_lint.py` (`--skill`, `--task`, `--all`) flags most rows above with file:line (rules
+`lost-progress`, `unhashable`, `key-order`, `or-true`, `stored-object`, `no-clear`, `side-effect`, `re-report`,
+`table-eq`); findings are upper bounds to confirm in the code.
 
 ## 4. Conventions (from the model)
 
