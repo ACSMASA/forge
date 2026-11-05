@@ -189,7 +189,7 @@ _(filled in at step 1; a resumed session must not ask again)_
     - it runs on ada in about a minute or less
     - its counts match a grep (e.g. the number of task XMLs)
     - it runs on sw.soult without crashing, if sw.soult is in scope
-- [ ] **4. THEMES, README and checker kit.**
+- [x] **4. THEMES, README and checker kit.**
   - Write `docs/sw.models/THEMES.md` with the vocabulary, the theme rows and the gotchas. The ontology and action rows come later, in steps 10 and 13.
   - Write `docs/sw.models/README.md` with the commands to regenerate the indexes and run the checker.
   - Add a `sw.models` entry to `KITS` in `tools/check_themes.py`.
@@ -276,4 +276,7 @@ _(one entry per finished step: date, step, what was produced, what the next step
   frag orders per DB (rows start with the DB name), top-level Lua, unreferenced entities (27 tasks, 27 skills, 26 queries,
   2 roles; sampled ones confirmed by grep), unresolved refs (the 2 ByPass case mismatches). Counts match the step-2 grep;
   139/139 frag initializers parsed. `ontology` / `actions` are stubs printing "not implemented".
+- 2026-11-05, step 4: `docs/sw.models/THEMES.md` (vocabulary, 30 theme rows, 20 anchored gotchas), `docs/sw.models/README.md`,
+  `sw.models` kit in `tools/check_themes.py` (aliases `dia5/`, `dec/`, `phy/`, `wwt/`). The kit lists only THEMES for
+  now: **step 6 must add `.claude/agents/sw-models-navigator.md` to its `files`.** All kits: 616 refs, 0 problems.
 
