@@ -173,7 +173,7 @@ _(filled in at step 1; a resumed session must not ask again)_
   - **Validation:** 3–4 real questions to validate with.
 
   *Done when:* **Decisions** is filled in.
-- [ ] **2. Survey: decisional and physical.**
+- [x] **2. Survey: decisional and physical.**
   - Survey the decisional tree:
     - how skills, tasks, queries, roles, world objects and behaviors are declared (xml + lua pairs) and named
     - how a mission reaches its task (`Missions.xml` `@dia-behavior`) and its skills
@@ -268,4 +268,7 @@ _(one entry per finished step: date, step, what was produced, what the next step
 - 2026-11-05, step 1: Decisions filled (sw.models only, proposals only, `sw-models-navigator` + `/models`, 4 drafted
   validation questions). Note: action dirs are `common/agent/behaviors/skills/actions`, `military/agent/skills/actions`,
   `navy/agent/skills/actions`, `crowd/behaviors/skills/actions`, `common/commander/behaviors/skills/actions`; 372 `dia-behavior` in Missions.xml.
+- 2026-11-05, step 2: `docs/sw.models/_build_notes.md` § A. Entity name = path; classify by XML root (562 skills,
+  523 tasks, 134 queries, 173 classes, 36 interfaces, 32 roles, 25 resources). Tasks have no `.lua`. Two physical DBs
+  in ada (`mildb`, `worldwide-tests`), client branches add whole model dirs. Regexes for step 3 are in the notes.
 
