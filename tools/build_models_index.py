@@ -531,8 +531,9 @@ def build_decisional(repo, model, out):
 # ontology
 
 
-def blank_lua(src):
-    """Drop Lua comments and blank string contents, keeping the code structure."""
+def blank_lua(src, keep_lines=False):
+    """Drop Lua comments and blank string contents, keeping the code structure.
+    keep_lines: keep the newlines of dropped block comments and long strings, so line numbers still hold."""
     out, i, n = [], 0, len(src)
     while i < n:
         c = src[i]
@@ -540,7 +541,10 @@ def blank_lua(src):
             m = re.match(r"--\[(=*)\[", src[i:i + 20])
             if m:
                 end = src.find("]" + m.group(1) + "]", i)
-                i = n if end < 0 else end + len(m.group(1)) + 2
+                j = n if end < 0 else end + len(m.group(1)) + 2
+                if keep_lines:
+                    out.append("\n" * src.count("\n", i, j))
+                i = j
             else:
                 j = src.find("\n", i)
                 i = n if j < 0 else j
@@ -548,8 +552,9 @@ def blank_lua(src):
         m = re.match(r"\[(=*)\[", src[i:i + 20])
         if m:
             end = src.find("]" + m.group(1) + "]", i)
-            out.append('""')
-            i = n if end < 0 else end + len(m.group(1)) + 2
+            j = n if end < 0 else end + len(m.group(1)) + 2
+            out.append('""' + ("\n" * src.count("\n", i, j) if keep_lines else ""))
+            i = j
             continue
         if c in "\"'":
             j = i + 1
@@ -1128,14 +1133,10 @@ def scan_integration_defs(sword):
     return defs, helpers
 
 
-def build_actions(repo, model, out, sword):
-    dia5 = os.path.join(repo, "data", "data", "models", model, "decisional", "dia5")
-    if not os.path.isdir(dia5):
-        sys.exit(f"{dia5}: not found")
-    ents = scan_decisional(dia5)
-    rel = lambda e: os.path.relpath(e.path, dia5).replace("\\", "/")
-
-    # --- sw.sword side: kernel starters and integration closure
+def integration_closure(sword):
+    """Kernel starters and what each integration.* function reaches.
+    Returns (starters, idefs, helpers, resolve_integ, integ_starters, integ_direct, starters_of); empty when sword
+    is None. starters_of(key, lua_body, file) gives the starters reachable from any Lua body."""
     have_sword = bool(sword) and os.path.isdir(os.path.join(sword, "src", "libraries", "simulation"))
     starters = kernel_starters(sword) if have_sword else {}
     idefs, helpers = scan_integration_defs(sword) if have_sword else ({}, {})
@@ -1181,6 +1182,19 @@ def build_actions(repo, model, out, sword):
 
     integ_starters = {n: starters_of(("i", n), b, f) for n, (f, _, b) in idefs.items()}
     integ_direct = {n: {t for t in KERNEL_TOKEN.findall(b) if t in starters} for n, (f, _, b) in idefs.items()}
+    return starters, idefs, helpers, resolve_integ, integ_starters, integ_direct, starters_of
+
+
+def build_actions(repo, model, out, sword):
+    dia5 = os.path.join(repo, "data", "data", "models", model, "decisional", "dia5")
+    if not os.path.isdir(dia5):
+        sys.exit(f"{dia5}: not found")
+    ents = scan_decisional(dia5)
+    rel = lambda e: os.path.relpath(e.path, dia5).replace("\\", "/")
+
+    # --- sw.sword side: kernel starters and integration closure
+    have_sword = bool(sword) and os.path.isdir(os.path.join(sword, "src", "libraries", "simulation"))
+    starters, idefs, helpers, resolve_integ, integ_starters, integ_direct, _ = integration_closure(sword)
 
     def integ_names(text):
         outn = set()

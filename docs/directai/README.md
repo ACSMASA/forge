@@ -11,6 +11,7 @@ Scope: the Spark runtime and language. The SWORD kernel and its integration laye
 Out of scope in directai: `src/applications/ide` (Eclipse IDE), `src/applications/demo` (Unity), most of `data/tests`.
 
 After pulling directai, sw.sword, sw.models or sw.soult (or switching branches), from the forge root:
+`python -I tools/kits.py` shows which indexes are stale; `--build` rebuilds them and runs the checker. One by one:
 
 ```sh
 python -I tools/build_dai_index.py C:/MASARepo/directai C:/MASARepo/sw.sword C:/MASARepo/sw.models C:/MASARepo/sw.soult docs/directai/dai_lua_index.md

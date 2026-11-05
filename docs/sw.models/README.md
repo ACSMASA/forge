@@ -11,7 +11,8 @@ The navigator answers from the **files** of `C:/MASARepo/sw.models` (DIA5 decisi
 
 Scope: sw.models only (model `ada` by default). sw.soult is not indexed.
 
-After pulling sw.models or switching branches, from the forge root:
+After pulling sw.models or switching branches, from the forge root: `python -I tools/kits.py` shows which indexes are
+stale; `--build` rebuilds them (keeping the model recorded in their header) and runs the checker. One by one:
 
 ```sh
 python -I tools/build_models_index.py C:/MASARepo/sw.models docs/sw.models            # all indexes, model ada

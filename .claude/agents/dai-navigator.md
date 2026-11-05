@@ -1,6 +1,6 @@
 ---
 name: dai-navigator
-description: Answers questions about DirectAI (DAI) and the Spark language it runs — how Spark XML entities (roles, skills, tasks, classes, queries, resources) and their Lua/.bms implementations are parsed, validated (sparkcheck, validator diagnostics) and executed (Activate/Feedback, node instances, task stages, spark.start/stop, spark.startStopAction, messages, events, type checking, Lua errors and timeouts, debug server/trace). Use proactively when a question is about the Spark language or runtime, a sparkcheck/validator message, or the spark.*/sw.ai.*/masalife.* API. NOT for the SWORD kernel or its integration layer (DEC_*/_DEC_ functions, integration.*, missions, perception, physical XML): use sw-sword-navigator for those. Pass the full question plus any context (model, branch, file, exact error text).
+description: Answers questions about DirectAI (DAI) and the Spark language it runs — how Spark XML entities (roles, skills, tasks, classes, queries, resources) and their Lua/.bms implementations are parsed, validated (sparkcheck, validator diagnostics) and executed (Activate/Feedback, node instances, task stages, spark.start/stop, spark.startStopAction, messages, events, type checking, Lua errors and timeouts, debug server/trace). Use for Spark language/runtime questions that need several lookups or judgment (why a model fails or behaves as it does, runtime semantics, validator rules); a single lookup (what a validator code means, where spark.X is defined) is faster inline from the forge kit (see forge CLAUDE.md). NOT for the SWORD kernel or its integration layer (DEC_*/_DEC_ functions, integration.*, missions, perception, physical XML): use sw-sword-navigator for those. Pass the full question plus any context (model, branch, file, exact error text).
 tools: Read, Grep, Glob, Bash
 model: inherit
 ---
@@ -32,8 +32,8 @@ Useful patterns (Git Bash, forward-slash absolute paths):
 
 ## Context checks (one Bash call each)
 - **When you cite code** (version and pin):
-  `cd C:/MASARepo/directai && git branch --show-current && git log -1 --format=%h && grep -oE 'dai.version.(major|minor)" value="[0-9]+' build/build.xml; grep -m1 -oE 'directai-\$\{platform\}-mt-[0-9_]+' C:/MASARepo/sw.sword/build/CMakeLists.txt; grep -m1 'ARG DAI_VERSION=' C:/MASARepo/sw.sword/Dockerfile`
-  Report the directai branch/version you read and the version sw.sword pins. If they differ, say so; when the answer could change, read the pinned release branch with `git show origin/<major.minor>:<path>` (release branches are `5.x`). Never assume a version.
+  `cd C:/MASARepo/directai && git branch --show-current && git log -1 --format=%h && grep -oE 'dai.version.(major|minor)" value="[0-9]+' build/build.xml; grep -m1 -oE 'directai-\$\{platform\}-mt-[0-9_]+' C:/MASARepo/sw.sword/build/CMakeLists.txt; grep -m1 'ARG DAI_VERSION=' C:/MASARepo/sw.sword/Dockerfile; grep -m1 -oE '@ .[0-9a-f]{7,}.' C:/MASARepo/forge/docs/directai/dai_lua_index.md`
+  Report the directai branch/version you read and the version sw.sword pins. If the index commit (last line) ≠ the HEAD above, its line numbers are hints only: confirm by grep. If they differ, say so; when the answer could change, read the pinned release branch with `git show origin/<major.minor>:<path>` (release branches are `5.x`). Never assume a version.
 - **Only when sparkcheck results are involved**: `grep -n 'name="directai"' C:/MASARepo/sw.models/build/build.xml C:/MASARepo/sw.soult/build/build.xml`. sw.models takes the latest release; sw.soult may pin its own version per branch.
 - **Only when models are involved**: `git -C C:/MASARepo/sw.models branch --show-current; git -C C:/MASARepo/sw.soult branch --show-current`.
 

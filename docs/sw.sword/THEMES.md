@@ -9,6 +9,8 @@ Path aliases (the checker expands them): `sim/` = `src/libraries/simulation/` ·
 Physical XML lives in the model, e.g. `sw.models/data/data/models/ada/physical/mildb/` (ada is the standing model).
 Model-side questions (which skill/task/mission/unit exists, wiring, which skill calls an `integration.*` function,
 resources and action skills, ontology classes) belong to **sw-models-navigator** (kit `forge/docs/sw.models/`).
+Generated indexes next to this file (grep, never read whole): `dec_function_index.md` (brain name → C++ registration),
+`integration_index.md` (`integration.*` → definition, LDoc summary, brain calls, kernel starters, model callers, overrides).
 
 ## French vocabulary (grep both languages)
 Pion = unit/agent · Automate = automat (unit group + CP) · Composante = equipment · Dotation = resource/supply item · Connaissance = knowledge ·
@@ -65,6 +67,7 @@ Each line: the trap, then an anchor to start reading. Re-verify before quoting.
 
 - **Entry point is one level above `integration/`**; the model loads it with `LoadResourcesFile( "Integration.lua" )`. `--integration-dir` points at the dir *containing* `Integration.lua`. → `data/app-data/resources/Integration.lua::include`, `DEC/DEC_Decision.cpp::LoadResourcesFile`
 - **Models load after the layer and may override `integration.*`**, but code that cached a load-time local (`local f = integration.f`, `local _DEC_X = _DEC_X`) keeps the old value. A renamed C++ name gives a silent `nil` until first call. → `int/EquipmentIntegration.lua::local _DEC_`
+- **A name defined twice in the layer: the file included last wins.** `integration.isFlying` is defined in `DestroyableIntegration.lua` (takes a knowledge `target`) and in `EquipmentIntegration.lua` (no argument, answers for `myself`), included later: `integration.isFlying( knowledge )` silently returns the caller's own state. Other duplicates: `integration_index.md` §3.1. → `int/EquipmentIntegration.lua::integration.isFlying = function()`, `data/app-data/resources/Integration.lua::include "integration/EquipmentIntegration.lua"`
 - **All brains of one script share a Lua VM** (children of a cached archetype); globals leak across entities. → `DEC/DEC_Decision.cpp::archetype`
 - **`_DEC__StopAction` returns 0, which is truthy in Lua.** → `DEC/DEC_ActionFunctions.cpp::StopAction`
 - **The kernel does not cancel actions when a mission is replaced or a task stops**: `CancelAllActions` runs only on death, the `end_mission` magic action, deletion, brain reload or a pion Lua crash. Until then a started action keeps getting `Update()`; the model's Lua stop handlers are the only cleanup. → `sim/Entities/Orders/MIL_OrderManager_ABC.cpp::ReplaceMission`, `sim/Entities/Agents/MIL_AgentPion.cpp::CancelCurrentMission`, `sim/Entities/Agents/Roles/Decision/DEC_RolePion_Decision.cpp::EndCleanStateAfterCrash`
