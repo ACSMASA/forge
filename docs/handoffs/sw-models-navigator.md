@@ -297,4 +297,9 @@ _(one entry per finished step: date, step, what was produced, what the next step
   MoveAndTakePosition.lua, Attack.xml string, Default.xml links, Models.xml per-mission fragorders. Applied: 2 frag-order
   gotchas, Frag orders row words + ReactToCoordinationLine; generator now adds a per-mission "Frag orders" column
   (union over models, with counts; matches the agent's manual awk). Agent's ARCHITECTURE.md line marked branch-specific.
+- 2026-11-05, step 7 Q3 (mech infantry composition): **pass**, ~19 tool calls. `INF.Mechanised platoon` (mildb) /
+  `TEST.Mechanized infantry platoon` (wwt), equipments → per-equipment sensors/weapons/resources, automat
+  `INF.Mechanised company`, model "Infantry platoon" → `military.agent.roles.Platoon`. Citations checked: Units.xml
+  block, Automats.xml block, model counts 2 vs 125, anchors. Applied: composition row detail, 2 gotchas (per-equipment
+  data, find by nature-app6). Checker 646 refs, 0 problems; client branches 0 problems.
 
