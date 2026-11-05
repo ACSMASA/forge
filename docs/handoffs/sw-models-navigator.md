@@ -226,7 +226,7 @@ _(filled in at step 1; a resumed session must not ask again)_
 - [x] **9. Generator: ontology index.**
   - Output `docs/sw.models/ontology_index.md`, with the anomaly report and the note that callers are upper bounds.
   - *Done when:* the class, interface and role counts match a grep (about 173 / 36 / 32 in ada on 2026-11-05).
-- [ ] **10. Ontology in THEMES and the agent.**
+- [x] **10. Ontology in THEMES and the agent.**
   - Add the THEMES row and its gotchas, and tell the agent when to use the ontology index.
   - Validate with one ontology question (e.g. "which interfaces have a single implementer, and could they be merged into their class?").
   - *Done when:* the result is logged and the checker passes.
@@ -322,4 +322,11 @@ _(one entry per finished step: date, step, what was produced, what the next step
   implementer, rules A/B 0 — mutation test catches both, 69 never-called names, 71 unrelated duplicates,
   `avoidingArea` nil key). Counts 41+132 / 36 / 32 match. Also fixed entity descriptions (only the root's own
   `<description>`; 62 wrong ones dropped from the decisional index). Prototype removed.
+- 2026-11-05, step 10: THEMES ontology row reworked + new "Roles: body type and ontology type map" row, 8 gotchas
+  (class/metadata split, validator rules, `__super`, abstract bases, object cache, role body check, interfaces.Agent
+  route), case gotcha **corrected** (runtime is case-insensitive); agent: ontology index description, header check on
+  both indexes, new step 6 (types / methods / studies). Validation "single-implementer interfaces, merge?": **pass**,
+  12 tool calls; 13 interfaces analysed, 4 flagged (NonTeammate/Teammate route, ThreateningUnit, crowd Destination).
+  Citations checked: NonTeammate/Teammate extends, Object 11 implements, Position→ThreateningUnit, changelog:204.
+  Checker 683 refs, 0 problems; 3 client branches 0 problems.
 
