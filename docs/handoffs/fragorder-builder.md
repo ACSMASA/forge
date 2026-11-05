@@ -364,7 +364,7 @@ Path aliases (as in `mission-builder.md`):
   - Build order.
   - Add to the sw.models kit in `tools/check_themes.py`. Update the THEMES sw.models "Frag orders" row to point to it.
   - The checker passes.
-- [ ] **3. `CHECKPOINTS.md`: frag-order rows.**
+- [x] **3. `CHECKPOINTS.md`: frag-order rows.**
   - **§1:**
     - add the queue (lost), the frago task (not resumed, orphan `seqStageIndex`), `myself.fragOrders` /
       `fragorderToClean` (lost), ODB effects (saved) and the `counter_` id reuse;
@@ -565,3 +565,11 @@ Path aliases (as in `mission-builder.md`):
   - an initializer that returns without cleaning reruns every tick;
   - any task start / stop (frago included) resets `meKnowledge.currentTask`, and stop / finish runs `Cleanup`;
   - the precedent's frago priorities were forgotten and fixed later (`d87f8b86d9`).
+- 2026-11-05 step 3: `CHECKPOINTS.md` frag-order rows:
+  - §1: + queue lost, frago task not resumed (orphan stage), Lua-only commander orders and `myself` effects lost,
+    id counter rebuilt; ROE in the ODB survives; crowd and task-group missions saved too (correction);
+  - §2: hop 8;
+  - §3: 4 new hazards (frag order lost, reader effect in `self`, initializer effect in `myself`, orphan stage) + 2
+    rows widened;
+  - §4: the reader convention (`ManageDiving` / `Transit`); §5: item 6; §6: 4 gap rows;
+  - a §7 stub that step 4 fills.
