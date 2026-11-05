@@ -18,6 +18,9 @@ Navigator subagents: your own prompt comes first; this file is mainly for the ma
 - **Cross-repo**: navigators cannot call each other. Trace hop by hop inline, or spawn one navigator per repo, in
   parallel when the parts are independent, else chained, passing the exact names from the previous answer's Caveats.
 - A medium task done inline: read only the matching step of that navigator's "How to work" and follow it.
+- **Building a unit mission** (writes into sw.models on the user's branch, never commits): `sw-mission-builder` (/mission).
+  Linting one, or "is this skill checkpoint-safe?": the inline `/mission-check` skill (mission_check + checkpoint_lint,
+  explained from MISSIONS.md / CHECKPOINTS.md). Explaining an existing mission's flow stays with sw-models-navigator.
 
 ## The pipeline (sw.models → directai → sw.sword)
 Kits: `docs/sw.models/`, `docs/sw.sword/`, `docs/directai/`. "Meaning" = which navigator owns the semantics.
@@ -39,8 +42,8 @@ and `sw.models/data/data/models/ada/physical/worldwide-tests/`; integration Lua 
 | Kernel action started / stopped | `action_index.md` §4, `integration_index.md` "Kernel starters" | `StartAction<` registration | sword |
 | `spark.*`, `sw.ai.*`, shared global; validator message | `dai_lua_index.md` §1–§3; §4 (code or message fragment) | directai spark plugin / validator | dai |
 | Physical XML attribute meaning | no index: grep `attribute( "name"` in sw.sword `src/libraries` | the C++ reader | sword |
-| Unit mission: anatomy / build / check | `docs/sw.models/MISSIONS.md` §1 files per DB, §2 parameters, §5 checks | Missions.xml, Models.xml, task XML | models |
-| Checkpoint safety of a behavior | `docs/sw.models/CHECKPOINTS.md` §3 hazards, §4 conventions, §6 sim-side gaps | the skill Lua; `integration.*State` in `SimulationIntegration.lua` | models (sim side: sword) |
+| Unit mission: anatomy / build / check | `docs/sw.models/MISSIONS.md` §1 files per DB, §2 parameters, §5 checks; `mission_index.md` §2; `tools/mission_check.py`, `tools/mission_scaffold.py` | Missions.xml, Models.xml, task XML | models |
+| Checkpoint safety of a behavior | `docs/sw.models/CHECKPOINTS.md` §3 hazards, §4 conventions, §6 sim-side gaps; `tools/checkpoint_lint.py` | the skill Lua; `integration.*State` in `SimulationIntegration.lua` | models (sim side: sword) |
 | A theme, no name yet | the kit's `THEMES.md` (FR/EN words, theme → files, gotchas) | the files of the row | kit owner |
 
 ## Grep recipes (Grep tool; rows start with a backticked name, so `.` stands for the backtick)

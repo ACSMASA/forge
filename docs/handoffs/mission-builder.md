@@ -1,5 +1,8 @@
 # Handoff: build the unit-mission builder (shared mission + checkpoint kit, tools, agent)
 
+**DONE 2026-11-05.** Record only: the facts below were folded into `docs/sw.models/MISSIONS.md`, `CHECKPOINTS.md`
+and the tools; the working notes (`_mission_notes.md`) are in git history (commit `8693981`).
+
 > **How to use:** start a Claude Code session in `C:\MASARepo\forge` and say
 > "Follow `docs/handoffs/mission-builder.md`" (first time) or
 > "Continue `docs/handoffs/mission-builder.md` from the first unchecked step" (after an interruption).
@@ -415,7 +418,7 @@ Path aliases:
   - Add the file to the checker's sw.models kit.
 - [x] **10. Validation.** Run the scenarios in **Decisions** with a general-purpose agent that reads and follows the
   agent file, working on a scratch copy. Fix the gaps found in the kit, tools and prompt.
-- [ ] **11. Close.**
+- [x] **11. Close.**
   - `/mission-check` skill: model-invocable, inline. It runs both linters on a mission, task or skill and explains the
     findings from `MISSIONS.md` / `CHECKPOINTS.md`.
   - CLAUDE.md mention.
@@ -466,3 +469,6 @@ Path aliases:
   frag orders), THEMES (escort, timers), agent (root override, exact/near duplicate, skill search, one-line gaps),
   scaffold (frag orders, per-DB objects, `ends`, int defaults, unknown keys), mission_check (targets, frag orders,
   terminators), checkpoint_lint (`lost-timer`, reset hint, `-v`).
+- 2026-11-05 step 11: `/mission-check` skill (inline, model-invocable: both linters + rule explanations), CLAUDE.md
+  (builder bullet, tools in the two pipeline rows), `_mission_notes.md` deleted, memory pointer updated. Restart
+  Claude Code to load `sw-mission-builder`, `/mission` and `/mission-check`.
