@@ -150,6 +150,130 @@ user, recommend the Lua-side fix.
 
 ## 7. Frag orders across a save + resume
 
-The reference fix pair (a sim-side design and a Lua-side design, with a recommendation) is written by step 4 of
-`docs/handoffs/fragorder-builder.md`. Until then, the builder states for every order that a task-starting frag order is
-lost on resume (§1, §3 "Frag order lost").
+A reference fix pair, designed once (sw.sword `master` @ `51bdc0ec9e`, directai `master` @ `9629aaf1a1`, sw.models
+`master` @ `d2f78fafcd`). The builder adapts it per order and recommends one side (§7.4). Neither is applied today:
+**a task-starting frag order is lost on resume** (§1).
+
+### 7.1 Spark facts both designs rely on
+- `spark.resume` on an inactive task restarts the stage that was running at save, from that stage's beginning.
+  `seqStageIndex` is the last **completed** stage. With no store entry, `resume` behaves exactly like `start`:
+  `spark/task.lua::self.stageIndex = self.state and self.state.seqStageIndex or 0`,
+  `directai/data/sparkle/src/sparkle/Behavior.lua::function Behavior.resume( self, parameters, priority )`.
+- `start` clears the task's persisted state. `stop`, a `disable-when-done` finish, a `failed` and `spark.stopAll` clear
+  it too (they all go through `Behavior.stop`). `suspend` does not. So the store's entries after a load are exactly the
+  tasks active at save: `directai/data/sparkle/src/sparkle/Behavior.lua::clearPersistentBehaviorState( self.name )`.
+- **Call `resume` once.** Each call makes a new activation: calling it every tick restarts the task every tick. Guard
+  it with `spark.isRunning`: `spark/behavior.lua::function spark.isRunning`.
+- **No API returns the parameters of a running task.** Only the code that starts it has them; the kernel's `StartTask`
+  discards the returned table: `int/SimulationIntegration.lua::StartTask = function( task, params )`.
+- **Listeners**: `spark.addBehaviorListener( t )` gets `willStart` / `willStop` / `finished` / `interrupted` with the
+  task name. Listeners are not persisted; register one shared table once per brain:
+  `spark/behavior.lua::function spark.addBehaviorListener`.
+- **Timing**: the default task is itself resumed, and its nodes are created at the first tick, after the store is
+  loaded. A `spark.resume` called there takes effect from the next tick.
+- **Mission resume never runs `StopEvents`** (`ActivateOrder` with the resume flag calls only `ResumeEvent`), so a
+  frago task resumed in the same tick survives: `sim/Decision/DEC_Decision.h::pRefs_->resumeEvent_( strBehavior, refMission );`.
+  A **new** mission does stop frago tasks (`FRAGORDERS.md` §5).
+
+### 7.2 Sim-side design (B): record started frag orders, write them with the missions, resume them
+Proposal only (unified diff in the builder's answer, never written).
+- **Record**: `DEC_Decision::StartFragOrderBehavior` (the kernel path, task groups included) tells the entity's
+  order manager, which stores `(frag order, task name)` in a new per-entity map of `MissionController`. Anchors:
+  `sim/Decision/DEC_Decision.h::pRefs_->startTask_( fragorder->GetDIAType(), refFrago );`,
+  `sim/Entities/Orders/MIL_TaskGroupOrderManager.cpp::StartFragOrderBehavior( frag );`.
+- **Drop the record**:
+  - a new brain function `_DEC_FragOrderTaskStopped( myself, taskName )` called from an `else` branch of the
+    listener's `willStop` (today only the mission gets `_DEC_FinMission`): `int/CRTaskListener.lua::_DEC_FinMission( myself )`;
+  - plus clearing all of the entity's records in `DEC_Decision::StopMission` (a mission stop kills every task).
+- **Write / read**: `MIL_FragOrder::Write` fills a `sword::FragOrder` (type, id, parameters through `type_.Copy`,
+  as for the network) and writes it with `xml::content`, exactly like missions. `Read` = constructor + `SetParameters`
+  in a try/catch, after knowledges are loaded.
+  - Anchors: `sim/Entities/Orders/MIL_PionMission.cpp::xml::content( "unit-mission", msg )`,
+    `sim/Entities/Orders/MIL_FragOrder.cpp::MIL_OrderContext()`, `sim/MissionController.cpp::void MissionController::WriteMissions(`.
+  - Reuse the `InvalidParameterVisitor` to drop orders whose parameters no longer resolve. Bump `counter_` on read
+    (fixes the id-reuse gap). Do not write the display extension (a raw pointer into the received message).
+- **Resume**: a new Lua global `ResumeTask = function( task, params ) spark.resume( task, params ) end` beside
+  `StartTask`, a `resumeTask_` script ref beside `startTask_` (`sim/Decision/DEC_Decision.cpp::startTask_`), and
+  `ResumeFragOrderBehavior` (a copy of `StartFragOrderBehavior` calling `resumeTask_`).
+  - Called from `MIL_OrderManager_ABC::Update` after `controller_.Start`, and also on its early-return path (an
+    entity with a frago but no saved mission): `sim/Entities/Orders/MIL_OrderManager_ABC.cpp::if( pNextMission_ == pMission_ )`.
+  - Drop a record that needs a mission when the entity's mission was not restored.
+- **Scope limits**:
+  - automats: their missions are not checkpointed, so they need their own branch in `ReadMissions` / `Initialize`:
+    `sim/MissionController.cpp::void MissionController::Initialize(`;
+  - tasks the model starts itself (`behavior:start( mission )`, 8 sites in `dia5/FragOrder.lua`) and `StartTask`
+    messages to subordinates are invisible to C++. Covering them needs a model wrapper that records through a brain
+    function **and reruns the initializer on resume** (side effects twice): prefer §7.3 for them.
+- **Add-on (A)**: with `MIL_FragOrder::Write` / `Read` in place, serializing the orders queue too (the
+  pending kind-(b) orders) costs about 20 lines.
+- **Blast radius** (measured at the commits above):
+  - `integration.startFragOrder` (alias of `DEC_StartFragOrder`): 1 sw.models user, 1 sw.soult user, no override.
+  - `StartFragOrderBehavior`: 2 C++ callers (`DEC_OrdersFunctions.cpp`, `MIL_TaskGroupOrderManager.cpp`).
+  - The global `StartTask`: no Lua caller anywhere (sw.sword, sw.models, sw.soult).
+  - The `willStop` listener is registered for all four entity kinds.
+  - Checkpoint format: no version attribute; an older checkpoint without the new elements still loads (inferred:
+    `xml::list` runs zero times; test it).
+  - Simtests: add a task-starting frag order + `sw.sword/src/masa/sword/simtests/checkpoint_test.go::func checkpointAndRestart`
+    to `fragorder_test.go`, plus a task-group variant.
+  - Ant: `checkdec`, `checkintegration`, `checkreports` (`CRTaskListener.lua` holds `eRC_` tokens).
+- **Version freeze**: `version.major` is 6.29.0 in both sw.sword and sw.models `master`, so it can land on sw.sword
+  master. A branch with a lower value is frozen (§6).
+
+### 7.3 Lua-side design (model only): record plain parameters, resume from the polling query
+- **Store**: one model-owned table under a **fixed** key, `integration.getPersistentState( "fragOrder", "tasks" )`
+  (task name → plain parameters). It is saved in the brain state, with no `pairs` key-order hazard and no skill
+  hashing: `int/SimulationIntegration.lua::integration.getPersistentState = function( skillName, paramsHashcode )`.
+- **Record** where the model starts a frago task, with the `mission` table in hand:
+  - in `fragOrder.startFragOrderTask` right after `dia5/FragOrder.lua::behavior:start( mission )`;
+  - optionally in the `StartTask` message handler (orders from a commander):
+    `dia5/_scripts/MessageTreatments.lua::behavior:start( content.params )`;
+  - and at the direct `:start( mission )` sites (e.g. `dia5/FragOrder.lua::common.agent.tasks.frago.DetachUnit:start( mission )`).
+
+  Convert each value to plain data (§4):
+  - numbers, strings and booleans as they are;
+  - a Point → `{ X, Y }` (rebuild: `dia5/_scripts/Scripts.lua::scripts.getSkillStatePointElement = function( node, key )`);
+  - an Agent → its id (`dia5/common/agent/world/MeKnowledge.lua::getAgentFromID = function( self, id )`);
+  - an AgentKnowledge → `{ agentId, knowledgeId }` (`integration.getAgentKnowledge`);
+  - a UnitType → its name;
+  - lists of these.
+
+  Any other value (sim types: equipment, resource or dotation types in 7 frago tasks; CBRNProtection; objects without
+  a rebuild helper) → **do not record**, and trace "not checkpointable".
+- **Forget**: one module-level listener table, `willStop` / `interrupted` → remove the task's record (a finish,
+  failure, opposite order or mission stop all end in `willStop`).
+- **Resume** once per brain from `dia5/common/agent/queries/getFragOrders.lua::local ordres_recus = integration.getOrdersCategory()`
+  (polled every tick by every unit, automat and crowd role that handles frag orders). Behind a guard in `myself`
+  (not persisted, so it is nil after a load), it does three things:
+  - registers the listener;
+  - rebuilds each record's parameters;
+  - calls `spark.resume( task, params )` when the task is not running; a record whose rebuild fails (e.g. the agent
+    is dead) is dropped and traced.
+- **Limits**:
+  - queued, unconsumed orders (kind (b) waiting for a reader) stay lost;
+  - kernel-path (c) orders: the Lua code never sees their parameters, so it covers only tasks **without**
+    parameters (16 of 40 frago / kernel tasks). With parameters, it needs a pass-through initializer, against the
+    `FRAGORDERS.md` §2 house style;
+  - initializer side effects (`stopTask` of the opposite task, `myself.*` writes) are not replayed: only the task
+    resumes. Mirror the `myself` effects separately (§3);
+  - the resumed stage reruns `create` / `start` like any resumed mission (§1–§4 apply to its skills).
+- **Blast radius**: `dia5/FragOrder.lua` and `getFragOrders.lua` exist on essentially every sw.models branch (185
+  refs), so the edit reaches them through merges. Every role that polls frag orders (military / navy Default,
+  security agents and Commander, Company, Crowd, TestPlatoon) gets the resume pass. sw.soult has its own copies
+  (`sw.soult/data/data/models/sws/decisional/dia5/FragOrder.lua`) and is not affected; port it there if wanted.
+
+### 7.4 Recommendation, per kind (`FRAGORDERS.md` §2)
+
+| Kind | Recommended | Why |
+|---|---|---|
+| (a) initializer, (e) crowd | **Lua-side (§7.3)** | the parameters are Lua tables only the model has; the sim-side would have to rerun the initializer |
+| (c) kernel path, with parameters | **Sim-side (B)**, as a proposal | only C++ holds the typed parameters. On a frozen branch: a pass-through initializer + Lua-side |
+| (c) kernel path, no parameters | Lua-side (records the name) or sim-side | either; Lua-side needs no sw.sword change |
+| (b) read by skills | neither: the reader persists the derived value (§4) | waiting orders need sim-side add-on (A) |
+| (f) immediate | nothing to resume | mirror `myself` effects; ODB effects survive |
+| task group | sim-side (B) | pushed by the kernel, no model polling |
+
+Builder rule:
+- Before proposing the Lua-side helper, check whether it already exists on the branch (grep
+  `integration.getPersistentState( "fragOrder"` in `dia5/`). If it exists, add the new order's record call (and the
+  converter case it needs); if not, write the helper once.
+- Always state what stays lost: queued orders, side effects, values that cannot be converted.

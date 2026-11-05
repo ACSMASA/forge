@@ -377,7 +377,7 @@ Path aliases (as in `mission-builder.md`):
   - **§4:** the "persist the derived value" convention, with `ManageDiving` / `Transit`.
   - **§6 gap rows:** queue not serialized; frago tasks not resumed; `myself.fragOrders` not persisted; ids reused.
   - The checker passes.
-- [ ] **4. Reference fix pair** (`CHECKPOINTS.md` §7, "Frag orders across a save + resume"). Design once; the builder
+- [x] **4. Reference fix pair** (`CHECKPOINTS.md` §7, "Frag orders across a save + resume"). Design once; the builder
   cites it:
   - **Sim-side:** a unified diff design, **proposed only**: persist active frag orders (type + parameters) and resume
     their tasks, e.g.
@@ -411,7 +411,7 @@ Path aliases (as in `mission-builder.md`):
     dia-type list.
   - One line in sw-sword-navigator and dai-navigator.
   - `sw-mission-builder`: "frag order → sw-fragorder-builder" in its description and hard rule.
-  - sw.sword THEMES "Frag orders" row: the checkpoint gotcha.
+  - sw.sword THEMES "Frag orders" row: the checkpoint gotcha (done at step 4).
   - The checker passes. Tell the user to restart.
 
 ### Phase B — tools
@@ -573,3 +573,14 @@ Path aliases (as in `mission-builder.md`):
     rows widened;
   - §4: the reader convention (`ManageDiving` / `Transit`); §5: item 6; §6: 4 gap rows;
   - a §7 stub that step 4 fills.
+- 2026-11-05 step 4: `CHECKPOINTS.md` §7, the reference fix pair (dai-navigator and sw-sword-navigator consulted):
+  - **Sim-side (B)**: record kernel-started frag orders (incl. task groups) in `MissionController`, write them like
+    missions (protobuf), and resume them through a new `ResumeTask` → `spark.resume` after `controller_.Start`
+    (early-return path too). Mission resume never calls `StopEvents`; the version is 6.29.0 on both master branches,
+    so it can land on master.
+  - **Lua-side**: plain-parameter records under the fixed key `getPersistentState( "fragOrder", "tasks" )`, written
+    where the model starts the task, cleared on `willStop`, resumed once per brain from `getFragOrders`.
+  - **Recommendation per kind**: (a) / (e) Lua-side; (c) with parameters sim-side; (b) the reader persists.
+  - New Spark facts: `seqStageIndex` = last completed stage; no API for a running task's parameters; call `resume`
+    once.
+  - Map updates applied: 2 directai THEMES gotchas, 2 sw.sword THEMES gotchas.
