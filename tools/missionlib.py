@@ -219,10 +219,12 @@ class DB:
             self.unit_missions.append(Mission(self.name, "units", el, mtag, line_of(self.raw, a), ptags))
         self.unit_missions_by_name = {m.name: m for m in self.unit_missions}
         self.max_id = max((int(i) for i in self.ids if i.isdigit()), default=0)
+        self.fragorder_names = {n for entries in self.ids.values() for sec, _, n in entries if sec == "fragorders"}
 
     def _parse_models(self):
         self.models = {}  # unit model name -> [mission names]
         self.mission_models = defaultdict(list)  # mission name -> [unit model names]
+        self.mission_frags = defaultdict(set)  # mission name -> <fragorder name> listed under it in unit models
         self.models_raw = read(self.models_path) if os.path.isfile(self.models_path) else ""
         if not self.models_raw:
             return
@@ -234,6 +236,8 @@ class DB:
             self.models[u.get("name")] = names
             for n in names:
                 self.mission_models[n].append(u.get("name"))
+            for x in (ms if ms is not None else []):
+                self.mission_frags[x.get("name")] |= {f.get("name") for f in x.findall("fragorder")}
         self.model_roles = {u.get("name"): u.get("dia-type") for u in (units if units is not None else [])}
 
     def translation(self, lang, context, source):
@@ -327,6 +331,25 @@ class Task:
         """Labels of the sequential <stage>s: the ones reported (eRC_BM_DebutPhase) and required in Stages.xml.
         A <parallel label> is neither (checkstage greps 'stage label=', CRTaskListener skips stage id 0)."""
         return [s.label for s in self.stages if s.label]
+
+    def terminators(self, stage):
+        """Behaviors of a sequential stage whose 'done' ends it: explicit next-stage-when-done (or 1.1 'main'), or the
+        single behavior of a stage the validator makes terminating (val/parsers/task.lua deduceMainBehaviors)."""
+        explicit = [b for b, a in stage.behaviors if (a.get("next-stage-when-done") or a.get("main")) == "true"]
+        if explicit or len(stage.behaviors) != 1:
+            return explicit
+        if any((a.get("next-stage-when-done") or a.get("main")) == "false" for _, a in stage.behaviors):
+            return []
+        last = stage is self.stages[-1]
+        if not last or (self.parallel is None and (self.next_task or self.disable_when_done)):
+            return [stage.behaviors[0][0]]
+        return []
+
+    def references(self):
+        """Entity names the task XML references: (kind, name) for every <behavior name> and <call query>."""
+        out = [("behavior", n) for n in re.findall(r'<behavior\b[^>]*?\bname="([^"]+)"', self.raw)]
+        out += [("query", n) for n in re.findall(r'<call\b[^>]*?\bquery="([^"]+)"', self.raw)]
+        return list(dict.fromkeys(out))
 
     def behaviors(self):
         out = []

@@ -97,7 +97,7 @@ Row = `| <db> | "<mission name>" |`. **Params** (context omitted): `dia-name:Typ
 | mildb | "AAVN - Screen" | 445949288 | `mildb.agent.tasks.AirScreen` |  | Intelligence | positions:LocationComposite[], stayOnPositionAtTheStart:Boolean?, rallyPoint:Point?, aviationRange:Enumeration? | 2: Army aviation reconnaissance helicopters, Navy ASW helicopters | dwd | moving to positions | 0/0 |
 | mildb | "AAVN - Support by fire (from a position)" | 445949311 | `mildb.agent.tasks.AirProvideDirectFiresFromAPosition` |  | Combat support | position:LocationComposite, unitsToSupport:LocationComposite[], rallyPoint:Point?, aviationRange:Enumeration? | 2: Army aviation attack helicopters, Navy attack helicopters | dwd | moving to position → deploying → moving to base | 0/0 |
 | mildb | "AAVN - Transport a crowd" | 445949298 | `mildb.agent.tasks.AirTransportACrowd` |  | Transport | crowd:CrowdKnowledge, loadingPoint:Point, destination:Point, rallyPoint:Point?, aviationRange:Enumeration? | 2: Army aviation cargo helicopters, Navy cargo helicopters | dwd | moving to loading point → moving to base | 0/0 |
-| mildb | "AIR - Assault" | 445949726 | `mildb.agent.tasks.AirAssault` |  | Offense | transitWaypoints:Path?, orbitWaypoints:Path, flyingHeight:Distance?, rallyPoint:LocationComposite? | 1: Navy strike fighters | dwd | flying along route → patrolling | 0/0 |
+| mildb | "AIR - Assault" | 445949726 | `mildb.agent.tasks.AirAssault` |  | Offense | transitWaypoints:Path?, orbitWaypoints:Path, flyingHeight:Distance?, rallyPoint:LocationComposite? | 1: Navy strike fighters | dwd | flying along route → patrolling | 0/1 |
 | mildb | "AIR - Bomb (enemies within an area)" | 44570 | `mildb.agent.tasks.AirStrike` |  | Offense | wayPoints:LocationComposite, area:Polygon, munitionType:ResourceType, quantity:Integer?, height:Distance? | 1: Aviation bomber squadron | dwd | moving to area | 0/0 |
 | mildb | "AIR - Bomb ground targets" | 445949430 | `mildb.agent.tasks.AirBombOnPositions` |  | Offense | wayPoints:LocationComposite, munitionType:ResourceType, quantity:Integer?, height:Distance?, targets:Point[] | 1: Aviation bomber squadron | dwd | moving to area | 0/0 |
 | mildb | "AMPH - Beach assault" | 445949686 | `mildb.agent.tasks.BeachAssault` |  | Offense | objective:LocationComposite | 2: Navy infantry platoon, Navy infantry support group | cont. | moving to beaching site → holding objective | 0/0 |
@@ -692,7 +692,7 @@ Row = `| `<skill>` |`. **Params**: `name:Type` (class short name or shape), `?` 
 | `common.agent.behaviors.skills.UnloadTransportedElements` | position:Destination?=NIL | done, failed |  | `MeKnowledge` |  |  | lost-progress 1 |
 | `common.agent.behaviors.skills.actions.Activate` | object:Object | activationActionCompleted |  | `MeKnowledge` | `common.agent.behaviors.resources.ActivationCapacity` |  |  |
 | `common.agent.behaviors.skills.actions.ActivateAirFiltration` | ignoreFailure:boolean=boolean | done, failed |  | `MeKnowledge` | `common.agent.behaviors.resources.AirFiltrationCapacity` |  |  |
-| `common.agent.behaviors.skills.actions.ActivateCBRNProtection` | protection:CBRNProtection | done, failed, protectionActivated |  | `MeKnowledge` | `common.agent.behaviors.resources.Motion` |  |  |
+| `common.agent.behaviors.skills.actions.ActivateCBRNProtection` | protection:CBRNProtection | done, failed, protectionActivated |  | `MeKnowledge` | `common.agent.behaviors.resources.Motion` |  | lost-timer 1 |
 | `common.agent.behaviors.skills.actions.ActivateEquipment` | equipmentType:any, owner:Agent | equipmentActivated |  | `MeKnowledge` | `common.agent.behaviors.resources.EquipmentActivation` |  |  |
 | `common.agent.behaviors.skills.actions.ActivateRequestSensors` |  | requestSensorsActivationRunning |  | `MeKnowledge` | `common.agent.behaviors.resources.ActivationCapacity` |  |  |
 | `common.agent.behaviors.skills.actions.Alert` | populatedArea:PopulatedArea | alertActionCompleted |  | `MeKnowledge` |  |  |  |
@@ -714,7 +714,7 @@ Row = `| `<skill>` |`. **Params**: `name:Type` (class short name or shape), `?` 
 | `common.agent.behaviors.skills.actions.DeactivateEquipment` | equipmentType:any | equipmentDeactivated |  | `MeKnowledge` | `common.agent.behaviors.resources.EquipmentActivation` |  |  |
 | `common.agent.behaviors.skills.actions.DeactivateSensors` |  | sensorsDeactivationRunning |  | `MeKnowledge` | `common.agent.behaviors.resources.ActivationCapacity` |  |  |
 | `common.agent.behaviors.skills.actions.Deconstruct` | element:DestructibleElement, instantaneously:boolean=boolean | deconstructActionCompleted, deconstructActionImpossible, deconstructionActionRunning |  | `MeKnowledge` | `common.agent.behaviors.resources.BuildCapacity` |  |  |
-| `common.agent.behaviors.skills.actions.DecontaminateAnArea` | area:Decontaminable, displayStartReport:boolean=boolean | decontaminated, done |  |  |  |  | re-report 1 |
+| `common.agent.behaviors.skills.actions.DecontaminateAnArea` | area:Decontaminable, displayStartReport:boolean=boolean | decontaminated, done |  |  |  |  | re-report 1, lost-timer 1 |
 | `common.agent.behaviors.skills.actions.DecontaminateArea` | area:Area | decontaminateActionCompleted |  | `MeKnowledge` |  |  |  |
 | `common.agent.behaviors.skills.actions.Deploy` |  | deployed, deploying |  | `MeKnowledge` | `common.agent.behaviors.resources.DeploymentCapacity` |  |  |
 | `common.agent.behaviors.skills.actions.DetachUnit` | unitType:UnitType, equipmentTypes:list(any), equipmentNumbers:list(number) | done, unitDetached |  | `MeKnowledge` | `common.agent.behaviors.resources.SplitCapacity` |  | side-effect 2, re-report 1 |
@@ -762,15 +762,15 @@ Row = `| `<skill>` |`. **Params**: `name:Type` (class short name or shape), `?` 
 | `common.agent.behaviors.skills.actions.Operate` | object:Object | operateActionRunning |  | `MeKnowledge` |  |  |  |
 | `common.agent.behaviors.skills.actions.ReattachToUnit` |  | done, failed |  | `MeKnowledge` | `common.agent.behaviors.resources.SplitCapacity` |  | side-effect 1, re-report 1 |
 | `common.agent.behaviors.skills.actions.Reinforce` | entity:Reinforceable | reinforcementActionFinished, reinforcementActionRunning |  | `MeKnowledge` |  |  |  |
-| `common.agent.behaviors.skills.actions.RemoveCBRNProtection` |  | done, failed |  | `MeKnowledge` | `common.agent.behaviors.resources.Motion` |  |  |
+| `common.agent.behaviors.skills.actions.RemoveCBRNProtection` |  | done, failed |  | `MeKnowledge` | `common.agent.behaviors.resources.Motion` |  | lost-timer 1 |
 | `common.agent.behaviors.skills.actions.RemoveImprovement` | object:Object | removeImprovementActionCompleted, removeImprovementActionRunning |  | `MeKnowledge` | `common.agent.behaviors.resources.BuildCapacity` |  |  |
 | `common.agent.behaviors.skills.actions.RestrainProduction` | resourceNode:ResourceNode, quantity:number=number | restrainActionRunning |  | `MeKnowledge` |  |  |  |
 | `common.agent.behaviors.skills.actions.SelfDecontaminate` |  | selfDecontaminationActionDone |  | `MeKnowledge` |  |  |  |
 | `common.agent.behaviors.skills.actions.SelfDestruct` |  | selfDestructionActionDone |  | `MeKnowledge` |  |  |  |
-| `common.agent.behaviors.skills.actions.SendMessageToCommander` | message:string | messageNotSent, messageSent |  |  |  |  |  |
+| `common.agent.behaviors.skills.actions.SendMessageToCommander` | message:string | messageNotSent, messageSent |  |  |  |  | re-report 1 |
 | `common.agent.behaviors.skills.actions.SetRadioState` | radioState:number |  |  | `MeKnowledge` | `common.agent.behaviors.resources.RadioCapacity` |  |  |
 | `common.agent.behaviors.skills.actions.ShareKnowledgeWith` | entity:Agent, sharingDelay:number=number | knowledgeShared |  |  |  |  |  |
-| `common.agent.behaviors.skills.actions.StandBy` | delay:number, displayReport:boolean=boolean | done, waiting |  |  |  |  |  |
+| `common.agent.behaviors.skills.actions.StandBy` | delay:number, displayReport:boolean=boolean | done, waiting |  |  |  |  | lost-timer 1 |
 | `common.agent.behaviors.skills.actions.TakeOff` | height:number=number | takeOffActionCompleted |  | `MeKnowledge` | `common.agent.behaviors.resources.Motion` |  |  |
 | `common.agent.behaviors.skills.actions.Teleport` | position:Destination |  |  |  | `common.agent.behaviors.resources.Teleport` |  |  |
 | `common.agent.behaviors.skills.actions.TransferDotation` | receiver:Agent, resource:any, quantity:number, duration:number | done, transferActionRunning, transferActionTerminated |  | `MeKnowledge` | `common.agent.behaviors.resources.Motion` |  |  |
@@ -780,7 +780,7 @@ Row = `| `<skill>` |`. **Params**: `name:Type` (class short name or shape), `?` 
 | `common.agent.behaviors.skills.actions.UnequipNBCOutfit` |  |  |  | `MeKnowledge` | `common.agent.behaviors.resources.NBCProtectionCapacity` |  |  |
 | `common.agent.behaviors.skills.actions.Unload` | entity:Loadable, escorting:boolean=boolean | unloadActionCompleted |  | `MeKnowledge` | `common.agent.behaviors.resources.Transport` |  |  |
 | `common.agent.behaviors.skills.actions.UnloadCrowdConcentration` | crowd:Crowd? | unloaded |  | `MeKnowledge` |  |  |  |
-| `common.agent.behaviors.skills.actions.Wait` | delay:number?=NIL, displayReport:boolean=boolean, resetWhenInterrupted:boolean=boolean | done, waiting |  | `MeKnowledge` | `common.agent.behaviors.resources.Motion` |  |  |
+| `common.agent.behaviors.skills.actions.Wait` | delay:number?=NIL, displayReport:boolean=boolean, resetWhenInterrupted:boolean=boolean | done, waiting |  | `MeKnowledge` | `common.agent.behaviors.resources.Motion` |  | lost-timer 1 |
 | `common.agent.behaviors.skills.primitives.Activate` | entities:list(Object), interactionDistance:number=number | activated, done, notActivated |  | `MeKnowledge` |  |  | lost-progress 2 |
 | `common.agent.behaviors.skills.primitives.Breach` | entities:list(Object), avoidObstacles:boolean=boolean, interactionDistance:number?=number, waitForReinforcement:boolean=boolean, area:Area, ignoreRoadsPositions:boolean=boolean, emitReport:boolean=boolean | done, elementBreached, elementIsBeingBreached, elementNotBreached | isNavy | `MeKnowledge` |  |  | lost-progress 2, re-report 1 |
 | `common.agent.behaviors.skills.primitives.Build` | entities:list(BuildableElement), interactionDistance:number?=number, instantaneously:boolean=boolean, removeWork:boolean=boolean, moveToCenter:boolean=boolean, moveToClosestBorder:boolean=boolean, buildingPosition:Position?=NIL, waitForReinforcement:boolean=boolean, withoutReport:boolean=boolean | done, elementBuilt, elementIsBeingBuilt, elementNotBuilt |  | `MeKnowledge` |  |  | lost-progress 3 |
@@ -950,7 +950,7 @@ Row = `| `<skill>` |`. **Params**: `name:Type` (class short name or shape), `?` 
 | `military.agent.skills.SendDrone` | route:list(Destination), unitType:UnitType, equipmentType:any, droneMission:string, returnToHome:boolean=boolean |  |  |  |  |  | lost-progress 3, re-report 1 |
 | `military.agent.skills.ShootAndMove` | positions:list(Position)?=NIL, entities:list(DirectFireTarget)?=NIL, area:Area?=NIL, permanent:boolean=boolean, probabilityToHit:number=call | done, fireDone, onPosition |  | `MeKnowledge` |  |  | lost-progress 1 |
 | `military.agent.skills.ShootFromPositionsInOrder` | positions:list(Position), enemies:list(AgentKnowledge)?=NIL, permanent:boolean=boolean, probabilityToHit:number=number, neutralizeOnly:boolean=boolean |  |  |  |  |  | lost-progress 3 |
-| `military.agent.skills.Supply` | moveUponOrder:boolean=boolean, interactionDistance:number?=number |  |  | `MeKnowledge` |  |  | lost-progress 2 |
+| `military.agent.skills.Supply` | moveUponOrder:boolean=boolean, interactionDistance:number?=number |  |  | `MeKnowledge` |  |  | lost-progress 2, lost-timer 2 |
 | `military.agent.skills.SupportIlluminatorsWithIndirectFires` | illuminators:list(SupportedUnit), position:Position?=NIL, deactivateSelfProtection:boolean=boolean, ammunitionToUse:any, minDistance:number=number, deployOnCurrentPosition:boolean=boolean | done |  | `MeKnowledge` |  |  | lost-progress 1 |
 | `military.agent.skills.SupportWithDirectFires` | entities:list(SupportedUnit), positions:list(Position)?=NIL, retrogradeContext:boolean=boolean, deactivateSelfProtection:boolean=boolean | failed, onSupportingPosition |  | `MeKnowledge` |  |  |  |
 | `military.agent.skills.SupportWithIndirectFires` | supportedUnits:list(SupportedUnit), positions:list(Position)?=NIL, onlyWhenUnitsSelfProtect:boolean=boolean, retrogradeContext:boolean=boolean, distance:number=number, safetyDistance:number=number, deactivateSelfProtection:boolean=boolean |  |  | `MeKnowledge` |  |  |  |
@@ -1052,7 +1052,7 @@ Row = `| `<skill>` |`. **Params**: `name:Type` (class short name or shape), `?` 
 | `navy.agent.skills.TransferTo` | units:list(Agent), transporter:Agent, stayDocked:boolean=boolean | done, transferred |  | `MeKnowledge` |  |  | re-report 1 |
 | `navy.agent.skills.Transit` | waypoints:list(Destination), waitWhenStranded:boolean=boolean, timeOnTarget:number?=number, ignoreAttrition:boolean=boolean, goToTheClosestPosition:boolean=boolean, looped:boolean=boolean, startAtOptimalWaypoint:boolean=boolean | done, elementReached | selfRefloatSpeed | `MeKnowledge` |  | maxSpeedOnWater | lost-progress 4, key-order 1 |
 | `navy.agent.skills.Unmoor` | unberthingDuration:number=number | done |  | `MeKnowledge` |  |  | lost-progress 3 |
-| `navy.agent.skills.actions.DipSonar` | duration:number=number, hoverAltitude:number=number, sonarMode:number=number | done |  | `FlyingMeKnowledge` | `common.agent.behaviors.resources.Motion` |  |  |
+| `navy.agent.skills.actions.DipSonar` | duration:number=number, hoverAltitude:number=number, sonarMode:number=number | done |  | `FlyingMeKnowledge` | `common.agent.behaviors.resources.Motion` |  | lost-timer 1 |
 | `security.agent.behaviors.skills.CommanderReinforce` | company:Company |  |  |  |  |  |  |
 | `security.agent.behaviors.skills.CreateAWork` | work:BuildableElement, instantaneoulsy:boolean=boolean | done |  |  |  |  |  |
 | `security.agent.behaviors.skills.CreateThenFilter` | plannedWork:PlannedObject, intensity:number=number, crowdsAttitude:number=number, instantaneously:boolean=boolean, removeWork:boolean=boolean | failed, filtering |  | `MeKnowledge` |  |  | lost-progress 1 |
@@ -1076,7 +1076,7 @@ Row = `| `<skill>` |`. **Params**: `name:Type` (class short name or shape), `?` 
 | `security.agent.behaviors.skills.primitives.EnsureVictimsEvacuation` | victimsUnits:list(Agent), medicalUnit:Medical, interactionDistance:number?=number | done, evacuated, failed, notEvacuated |  | `MeKnowledge` |  |  | lost-progress 2, re-report 1 |
 | `security.agent.behaviors.skills.primitives.Evacuate` | populatedAreas:list(PopulatedArea), interactionDistance:number?=number | done, evacuated, failed, notEvacuated |  | `MeKnowledge` |  |  | lost-progress 2 |
 | `security.agent.behaviors.skills.primitives.Extinguish` | fires:list(Fire), interactionDistance:number?=number | done, extinguished, notExtinguished |  | `MeKnowledge` |  |  | lost-progress 2, re-report 1 |
-| `security.agent.behaviors.skills.primitives.ExtractVictims` | victimsUnits:list(Crowd), reachEntitiesToExtractVictims:boolean=boolean, interactionDistance:number?=number, extractionTarget:number=number | done, extracted, failed, notExtracted |  | `MeKnowledge` |  |  | lost-progress 3 |
+| `security.agent.behaviors.skills.primitives.ExtractVictims` | victimsUnits:list(Crowd), reachEntitiesToExtractVictims:boolean=boolean, interactionDistance:number?=number, extractionTarget:number=number | done, extracted, failed, notExtracted |  | `MeKnowledge` |  |  | lost-progress 3, re-report 1 |
 | `security.agent.behaviors.skills.primitives.Heal` | woundedUnits:list(Crowd), interactionDistance:number?=number | done, failed, healed, notHealed |  | `MeKnowledge` |  |  | lost-progress 2 |
 | `security.agent.behaviors.skills.primitives.Load` | transportableEntities:list(Loadable), interactionDistance:number?=number | done, failed, loaded, notLoaded |  | `MeKnowledge` |  |  | lost-progress 2 |
 | `security.agent.behaviors.skills.primitives.UndoAlert` | populatedAreas:list(PopulatedArea), interactionDistance:number?=number | done, failed, undoAlertImpossible, undoAlerted |  | `MeKnowledge` |  |  | lost-progress 2 |
@@ -1331,6 +1331,7 @@ Cross-DB id differences (notes) are omitted: `mission_check.py --all -v`.
 | WARN | mildb | "COMBAT - Snipe and hide" | optional parameter "Enemies" (AgentKnowledge): an absent value arrives as NIL (the task <default> is skipped), but task parameter enemies is not nullable | data/data/models/ada/decisional/dia5/mildb/agent/tasks/SnipeFromAPositionThenDisengage.xml:9 |
 | WARN | mildb | "NAVY.MCM - Remove Mines" | no category (this DB has <categories>) | data/data/models/ada/physical/mildb/Missions.xml:4304 |
 | WARN | mildb | "NAVY.MCM - Remove Mines in zone" | no category (this DB has <categories>) | data/data/models/ada/physical/mildb/Missions.xml:4317 |
+| WARN | mildb | "AIR - Assault" | task mildb.agent.tasks.AirAssault is disable-when-done but its last stage has no next-stage-when-done behavior: the mission never ends by itself | data/data/models/ada/decisional/dia5/mildb/agent/tasks/AirAssault.xml:57 |
 | ERROR | worldwide-tests | "SAFETY - Follow" | parameter "Positions": dia-name positions is not a parameter of security.agent.behaviors.tasks.Follow: the value is dropped | data/data/models/ada/physical/worldwide-tests/Missions.xml:18 |
 | WARN | worldwide-tests | "SAFETY - Decontaminate" | dia-behavior security.agent.behaviors.tasks.Decontaminate here, common.agent.tasks.DecontaminateAnArea in mildb | data/data/models/ada/physical/worldwide-tests/Missions.xml:225 |
 | ERROR | worldwide-tests | "ENGINEER - Bridge" | parameter "Bridge system": dia-name bridgeSystem is not a parameter of mildb.agent.tasks.Bridge: the value is dropped | data/data/models/ada/physical/worldwide-tests/Missions.xml:1112 |

@@ -413,7 +413,7 @@ Path aliases:
   - Hard rules: write only under `data/data/models/<model>/`. No git state changes, commits, ant or sim runs unless
     asked. sw.sword and directai changes are proposals only.
   - Add the file to the checker's sw.models kit.
-- [ ] **10. Validation.** Run the scenarios in **Decisions** with a general-purpose agent that reads and follows the
+- [x] **10. Validation.** Run the scenarios in **Decisions** with a general-purpose agent that reads and follows the
   agent file, working on a scratch copy. Fix the gaps found in the kit, tools and prompt.
 - [ ] **11. Close.**
   - `/mission-check` skill: model-invocable, inline. It runs both linters on a mission, task or skill and explains the
@@ -457,3 +457,12 @@ Path aliases:
 - 2026-11-05 step 9: `sw-mission-builder` agent (10-step procedure, root override for scratch copies, master stop,
   sim-side diff + Lua-side option + recommendation, Critique section) and `/mission` (fork). Scaffold reads the spec
   from stdin (`-`). Agent added to the checker's sw.models kit. Restart Claude Code before using it directly.
+- 2026-11-05 step 10: 5 runs on scratch copies, all PASS (notes §10): (a) Patrol once → new PatrolOnce task, near-dup
+  flagged, getPersistentKey sort proposal; (b) Hold crossing site → new query + HoldForDuration (persisted deadline),
+  lint-clean; (b') build + guard obstacle → construction already resumes from world state, sim-side identity diff +
+  Lua wrapper; (b'') duplicate reported first, nothing built; (c) navigator answered both questions from the kit.
+  Fixed: decisional_index §7 unit/automat models (rebuilt with mission_index), CHECKPOINTS (MoveAlong not safe, world
+  state row, waitInMin, stale state, construction gap, branch grep), MISSIONS (terminators, inherited default task,
+  frag orders), THEMES (escort, timers), agent (root override, exact/near duplicate, skill search, one-line gaps),
+  scaffold (frag orders, per-DB objects, `ends`, int defaults, unknown keys), mission_check (targets, frag orders,
+  terminators), checkpoint_lint (`lost-timer`, reset hint, `-v`).

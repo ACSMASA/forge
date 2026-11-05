@@ -18,8 +18,29 @@ What it writes (rules and anchors: docs/sw.models/MISSIONS.md §1):
   every DB       Stages.xml + Stages_<lang>.ts: the stage labels (checkstages wants them in both DBs)
   dia5           the task XML skeleton when the task does not exist (types from the model's missions, as in
                  mission_index.md §1); its behaviors are left as TODO comments for the designer
-Refuses (exit 1): name / dia-type / id already used, unknown model or category, unknown type or type with no
-Spark converter, missing translations, context dia-names reused.
+Refuses (exit 1): name / dia-type / id already used, unknown model, category or frag order, unknown type or type
+with no Spark converter, missing translations, context dia-names reused. Unknown spec keys are reported as notes.
+
+Spec keys (--example shows them; keys starting with _ are ignored):
+  name, task                      required
+  dia-type                        default = task (must be unique among unit missions: reusing a task needs another)
+  dbs                             default = every DB of the model
+  category                        DBs with <categories> (mildb); new one: new_category true + fr_category
+  id                              default = max id over every DB's Missions.xml + 1 (same id in each DB)
+  models                          {db: [unit model names]}
+  fragorders                      [names] for every model, or {db: [names]}: <fragorder> children of the mission
+  fr                              {"name": French mission name} (needed for every DB with Locales/fr)
+  description                     task <description> (skeleton only)
+  stages                          [{"label", "fr"}]; default = the existing task's labels
+  task_skeleton                   default true: write the task skeleton when the task does not exist
+  ends                            default true: skeleton task is disable-when-done; false = a continuous mission
+  sheet, sheet_fr                 {section: [line | {"ul": [line | [line, {"ul": ...}]]}]}, sections context,
+                                  behavior, specific-cases, comments, mission-end
+  params                          [{name, dia-name, type, optional, list | max-occurs + min-occurs, min-value,
+                                  max-value, choices, objects ("all" | "none" | [types] | {db: ...}), units,
+                                  values [{id, name, fr}], attrs {other ADN attributes}, fr, sheet, sheet_fr,
+                                  default (skeleton <default>), task_type (skeleton type: class | number | boolean |
+                                  string | any), description}]
 """
 import argparse
 import difflib
@@ -36,23 +57,24 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import missionlib as ml  # noqa: E402
 
 EXAMPLE = {
-    "_comment": "Keys starting with _ are ignored. fr = French (needed for every DB with Locales/fr: mildb).",
+    "_comment": "A valid spec for model ada. Keys starting with _ are ignored; see the module docstring for every key.",
     "name": "COMBAT - Hold a crossing point",
     "task": "military.agent.tasks.HoldCrossingPoint",
-    "dia-type": "(optional, default = task)",
+    "_dia-type": "military.agent.tasks.HoldCrossingPoint (default = task)",
     "dbs": ["mildb", "worldwide-tests"],
-    "category": "Combat (DBs with <categories> only; a new one needs new_category + fr_category)",
+    "category": "Defense",
     "_new_category": False,
     "_fr_category": "",
-    "_id": "(optional; default = max id over every DB's Missions.xml + 1)",
+    "_id": 0,
     "models": {"mildb": ["Infantry platoon"], "worldwide-tests": ["Infantry platoon"]},
+    "fragorders": ["Pause movement", "Resume movement"],
     "fr": {"name": "COMBAT - Tenir un point de passage"},
-    "description": "Task <description> (skeleton only).",
+    "description": "For the agent, to move to a crossing point and hold it.",
     "params": [
         {"name": "Crossing point", "dia-name": "crossingPoint", "type": "LocationComposite", "optional": False,
-         "choices": ["Point", "ObjectKnowledge"], "objects": "all",
-         "fr": "Point de passage", "sheet": "The point to hold.", "sheet_fr": "Le point à tenir.",
-         "_task_type": "(optional skeleton override: a class name, number, boolean, string or any)"},
+         "choices": ["Point", "ObjectKnowledge"], "objects": {"mildb": "all", "worldwide-tests": "all"},
+         "task_type": "common.agent.world.interfaces.Destination",
+         "fr": "Point de passage", "sheet": "The point to hold.", "sheet_fr": "Le point à tenir."},
         {"name": "Mode", "dia-name": "mode", "type": "Enumeration", "optional": True, "default": 0,
          "values": [{"id": 0, "name": "Static", "fr": "Statique"}, {"id": 1, "name": "Mobile", "fr": "Mobile"}],
          "fr": "Mode", "sheet": "How to hold.", "sheet_fr": "Comment tenir."},
@@ -66,6 +88,10 @@ EXAMPLE = {
     "sheet_fr": {"context": ["Une ligne par entrée."], "behavior": [], "specific-cases": [], "comments": [],
                  "mission-end": []},
 }
+TOP_KEYS = {"name", "task", "dia-type", "dbs", "category", "new_category", "id", "models", "fragorders",
+            "description", "stages", "task_skeleton", "ends", "params"}
+PARAM_KEYS = {"name", "dia-name", "type", "optional", "list", "max-occurs", "min-occurs", "min-value", "max-value",
+              "choices", "objects", "units", "values", "attrs", "default", "task_type", "description", "sheet"}
 
 SECTIONS = ["context", "behavior", "specific-cases", "comments", "mission-end"]
 # The context parameters' sheet texts, as written in 237 of the mildb sheets (en) and 236 of the fr ones.
@@ -322,7 +348,7 @@ def insert_sorted(text, items, new_key, new_block, end_pos):
 # builders
 
 
-def param_xml(p, canonical):
+def param_xml(p, canonical, db):
     attrs = {"dia-name": p["dia-name"], "name": p["name"], "optional": "true" if p.get("optional") else "false",
              "type": canonical}
     if p.get("list") or p.get("max-occurs"):
@@ -340,6 +366,8 @@ def param_xml(p, canonical):
         kids += [f'          <parameter type="{xa(c)}"/>' for c in p["choices"]]
         kids.append("        </choice>")
     obj = p.get("objects", "all" if canonical in ("LocationComposite", "ObjectKnowledge", "PlannedWork") else None)
+    if isinstance(obj, dict):  # per DB
+        obj = obj.get(db)
     if obj == "all":
         kids.append('        <objects all="true"/>')
     elif obj == "none":
@@ -445,7 +473,7 @@ def default_xml(p, shape):
     if isinstance(d, bool):
         return f"<boolean>{'true' if d else 'false'}</boolean>"
     if isinstance(d, (int, float)):
-        return f"<number>{float(d)!r}</number>" if isinstance(d, float) or shape == "<number/>" else f"<number>{d}</number>"
+        return f"<number>{d!r}</number>"  # dia5 writes both 30 and 1.0: keep the spec's form
     return f"<string>{xt(d)}</string>"
 
 
@@ -473,8 +501,8 @@ def pretty_xml(fragment, indent):
 
 def task_skeleton(spec, params, labels):
     L = ['<?xml version="1.0" encoding="UTF-8"?>',
-         f'<task xmlns="http://www.masagroup.net/directai/spark/lang/1.5" name="{xa(spec["task"])}" '
-         f'disable-when-done="true">',
+         f'<task xmlns="http://www.masagroup.net/directai/spark/lang/1.5" name="{xa(spec["task"])}"'
+         + (' disable-when-done="true">' if spec.get("ends", True) else ">"),
          f'    <description>{xt(spec.get("description", "TODO"))}</description>',
          "    <parameters>"]
     for p, inner, nullable, dflt in params:
@@ -488,9 +516,12 @@ def task_skeleton(spec, params, labels):
         L.append("        </parameter>")
     L.append("    </parameters>")
     L.append("    <stages>")
-    for lab in labels:
+    for i, lab in enumerate(labels):
+        last_open = i == len(labels) - 1 and not spec.get("ends", True)
+        todo = ("runs until the mission is stopped: no next-stage-when-done" if last_open else
+                "one with next-stage-when-done")
         L += [f'        <stage label="{xa(lab)}">', "            <behaviors>",
-              f"                <!-- TODO: behaviors of stage \"{xt(lab)}\" (one with next-stage-when-done) -->",
+              f"                <!-- TODO: behaviors of stage \"{xt(lab)}\" ({todo}) -->",
               "            </behaviors>", "        </stage>"]
     L.append("    </stages>")
     L.append("</task>")
@@ -619,6 +650,22 @@ def scaffold(model, spec, sword_types):
         need(models.get(db.name), f"{db.name}: models lists no unit model (no unit could receive the mission)")
         for um in models.get(db.name) or []:
             need(um in db.models, f"{db.name}: unknown unit model \"{um}\"")
+    # frag orders (Models.xml <mission><fragorder name/>): names from the DB's Missions.xml <fragorders>
+    fo_spec = spec.get("fragorders") or []
+    frags = {}
+    for db in dbs:
+        frags[db.name] = list(fo_spec.get(db.name) or []) if isinstance(fo_spec, dict) else list(fo_spec)
+        known = {n for entries in db.ids.values() for sec, _, n in entries if sec == "fragorders"}
+        for f in frags[db.name]:
+            need(f in known, f"{db.name}: unknown frag order \"{f}\" (not in Missions.xml <fragorders>)")
+    # unknown keys: reported, not fatal (a typo would otherwise be silently ignored)
+    lang_keys = {k for lang in langs for k in (lang, f"{lang}_category", f"sheet_{lang}")}
+    for k in set(spec) - TOP_KEYS - lang_keys - {"sheet", "fr_category", "sheet_fr", "fr"}:
+        ed.notes.append(f"unknown spec key \"{k}\" ignored")
+    for p in params:
+        for k in set(p) - PARAM_KEYS - {lang for lang in langs} - {f"sheet_{lang}" for lang in langs} - {"fr", "sheet_fr"}:
+            if not k.startswith("_"):
+                ed.notes.append(f"parameter {p.get('name')}: unknown key \"{k}\" ignored")
     if errors:
         raise SpecError("\n".join(errors))
 
@@ -629,7 +676,7 @@ def scaffold(model, spec, sword_types):
         if db.categories:
             attrs["category"] = cat
         block = ("    <mission " + " ".join(f'{k}="{xa(v)}"' for k, v in sorted(attrs.items())) + ">\n"
-                 + ml.CONTEXT_XML + "".join(param_xml(p, canon[p["dia-name"]]) for p in params) + "    </mission>\n")
+                 + ml.CONTEXT_XML + "".join(param_xml(p, canon[p["dia-name"]], db.name) for p in params) + "    </mission>\n")
         end = re.search(r"(?m)^  </units>", text).start()
         text = text[:end] + block + text[end:]
         if db.categories and cat not in db.categories:
@@ -648,7 +695,12 @@ def scaffold(model, spec, sword_types):
                 raise SpecError(f"{db.name}: unit model {um} not found in {db.models_path}")
             uend = text.find("    </unit>", u.end())
             ms = re.compile(r"(?m)^      <missions/>\n").search(text, u.end(), uend)
-            line = f'        <mission name="{xa(name)}"/>\n'
+            if frags[db.name]:
+                line = (f'        <mission name="{xa(name)}">\n'
+                        + "".join(f'          <fragorder name="{xa(f)}"/>\n' for f in frags[db.name])
+                        + "        </mission>\n")
+            else:
+                line = f'        <mission name="{xa(name)}"/>\n'
             if ms:
                 text = text[:ms.start()] + "      <missions>\n" + line + "      </missions>\n" + text[ms.end():]
                 continue

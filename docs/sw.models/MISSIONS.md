@@ -78,7 +78,9 @@ at sw.sword build time); no generator exists besides `tools/mission_scaffold.py`
   `eRC_BM_EndMissionFailed` then `_DEC_FinMission`: `int/CRTaskListener.lua::_DEC_FinMission( myself )`. Without it
   the last stage's `done` only reports `TaskDone` to the automat and **the task keeps running**:
   `int/CRTaskListener.lua::"TaskDone"`.
-- **Stage advance**: a stage ends when a behavior with `next-stage-when-done` sends `done`. A single-behavior stage
+- **Stage advance**: a stage ends when a behavior with `next-stage-when-done` sends `done`; in a multi-behavior stage
+  only behaviors with an explicit `next-stage-when-done="true"` count (`done` from the others, e.g. Engage without
+  targets, is ignored): `spark/task.lua::-- If sender is a main behavior, send 'done' feedback to task node;`. A single-behavior stage
   defaults to it, **except the last stage of a task that is not `disable-when-done` (and has no next-task) or has a
   parallel stage**: `val/parsers/task.lua::if i < n or ( not data.parallel and ( data.nextTask or data.disableWhenDone ) ) then`.
 - **Stage labels** become the reports `eRC_BM_DebutPhase` / `eRC_BM_FinPhase` and must be in Stages.xml:
@@ -105,6 +107,10 @@ at sw.sword build time); no generator exists besides `tools/mission_scaffold.py`
   **concurrently** with the mission, both at priority 1 (missions start without priority):
   `int/SimulationIntegration.lua::( start and spark.start or spark.resume )( task, params )`. Stopping missions spares
   it: `spark/behavior.lua::function spark.stopAll( includingDefaultTask )`, `int/CRTaskListener.lua::integration.stopTasks = function`.
+  A role without its own `<default-task>` inherits its parent's (`<extends>`), e.g. `dia5/navy/agent/roles/SelfRefloatingVessel.xml::<extends>`
+  gets `dia5/navy/agent/roles/Vessel.xml::<default-task>`: `spark/role.lua::inherit the default task of its parent`.
+- **Frag orders** listed under the mission in Models.xml (`<mission name><fragorder name>`) can start their own tasks
+  beside it (initializers in `dia5/FragOrder.lua::fragOrderTaskInitializers`); `decisional_index.md` §7 counts them.
 - **Resources**: the mission's skills and the default task's skills compete for the same `<resource>`s; check
   `action_index.md` §1 for every skill that acquires a resource the new skills need.
 - **Modifiers**: declared by a skill (`<modifiers><modifier name><type><value>`, boolean/number/string), overridden by

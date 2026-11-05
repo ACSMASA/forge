@@ -17,6 +17,9 @@ Rules:
   side-effect     issueMission / createEmptyUnit / create* / give / transfer… in create or start, no state read first
   re-report       displayReport* / reportFunction / sendMessage* in create or start, no state read first (duplicates)
   table-eq        x == {} / x ~= {} (always false / true)
+  lost-timer      utilities.waitInMin / waitInSec keep their start time in a Lua table (knowledge[myself]): the full
+                  delay restarts after resume
+Out of scope: state kept in world objects (object[myself], startStopAction state) and in integration functions.
 Exit code 0 (findings are warnings).
 """
 import argparse
@@ -29,7 +32,9 @@ import missionlib as ml  # noqa: E402
 from build_models_index import lua_class_methods, scan_decisional, link_refs, read  # noqa: E402
 
 RULES = ["lost-progress", "unhashable", "key-order", "or-true", "stored-object", "no-clear", "side-effect", "re-report",
-         "table-eq"]
+         "table-eq", "lost-timer"]
+# Timer helpers that keep their start time in Lua (int/ToolsFunctions.lua: knowledge[myself].tempsDebut), lost on resume.
+LUA_TIMER = re.compile(r"\b(?:utilities\.)?(waitInMin|waitInSec)\s*\(")
 # Functions that rerun after a resume (node recreated, action restarted): what they set is rebuilt, not lost.
 RERUN_FN = {"create", "start", "started", "select", "deselect", "stop", "destroy"}
 LIFECYCLE_FN = re.compile(r"\b([A-Za-z_]\w*)\s*=\s*function\s*\(")
@@ -39,7 +44,8 @@ STATE_CALL = re.compile(r"\b(?:scripts|integration)\.(getSkillState|setSkillStat
 TIME_EXPR = re.compile(r"getRealTime|getSimulationTime|DEC_TempsReel|DEC_TempsSim|\bgetTime\s*\(")
 SIDE_EFFECT = re.compile(r"(?::|\.)\s*(issueMission\w*|createEmptyUnit|createObject\w*|createPlannedWork\w*|createUnit\w*|"
                          r"magicMove\w*|teleport\w*|giveEquipment\w*|transfer\w*|destroy\w*)\s*\(")
-REPORT = re.compile(r"(?::|\.)\s*(displayReport\w*|sendMessage\w*|SendMessage\w*|sendReport\w*)\s*\(|\b(reportFunction)\s*\(")
+REPORT = re.compile(r"(?::|\.)\s*(displayReport\w*|sendMessage\w*|SendMessage\w*|sendReport\w*|send\w*MessageTo\w*)\s*\(|"
+                    r"\b(reportFunction)\s*\(")
 
 
 def strip_comments(src):
@@ -204,10 +210,17 @@ def lint_skill(path, xml_text, hashes, rules, model_root, keep_state=frozenset()
             f[2].add(name)
             if name == "activate" and kind == "flag":
                 f[3].add(rhs.split()[0].rstrip(",;"))
+    rerun_vals = {}  # field -> (function, value) set by a function that reruns on resume (create, start...)
+    for name, a, b in fns:
+        if name in RERUN_FN:
+            for m in re.finditer(r"\bself\.(\w+)\s*=(?!=)\s*([^\n]*)", code[a:b]):
+                rerun_vals.setdefault(m.group(1), (name, m.group(2).strip().rstrip(",;")[:40]))
     for field, (kind, pos, where, act_vals) in fields.items():
         if {"true", "false"} <= act_vals:
             continue
-        add("lost-progress", code, pos, f"self.{field} ({kind}, set in {', '.join(sorted(where))}) is not persisted: lost on resume")
+        hint = (f"; {rerun_vals[field][0]} resets it to {rerun_vals[field][1]} on resume: fine if that initial value is "
+                f"right after resume" if field in rerun_vals else "")
+        add("lost-progress", code, pos, f"self.{field} ({kind}, set in {', '.join(sorted(where))}) is not persisted: lost on resume{hint}")
     # unhashable / key-order
     if uses_state and xml_text is not None:
         ptypes = skill_param_types(xml_text)
@@ -264,6 +277,9 @@ def lint_skill(path, xml_text, hashes, rules, model_root, keep_state=frozenset()
                     continue
                 seen.add(call)
                 add(rule, code, a + se.start(), f"{call} in {name} with no persisted guard read before it: {what}")
+    # lost-timer
+    for m in LUA_TIMER.finditer(code):
+        add("lost-timer", code, m.start(), f"{m.group(1)} keeps its start time in a Lua table (int/ToolsFunctions.lua): the whole delay restarts after resume; persist an absolute utilities.getRealTime() deadline instead")
     # table-eq
     for m in re.finditer(r"[=~]=\s*\{\s*\}", code):
         add("table-eq", code, m.start(), "comparison with a new table {} is always false (==) / true (~=): use next( x ) == nil")
@@ -297,6 +313,7 @@ def main():
     ap.add_argument("--model", default="ada")
     ap.add_argument("--root", default=ml.DEFAULT_ROOT)
     ap.add_argument("--summary", action="store_true", help="counts per rule only")
+    ap.add_argument("-v", "--verbose", action="store_true", help="accepted for symmetry with mission_check (no effect)")
     a = ap.parse_args()
     rules = set(a.rules.split(","))
     model_dir = os.path.join(a.root, "data", "data", "models", a.model)

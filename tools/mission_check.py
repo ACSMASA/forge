@@ -142,8 +142,23 @@ def check_mission(m, db, model, rep, others):
         rep.error(db.name, subj, f"dia-behavior {m.task_name} is a {task.kind}, not a task", path, m.line)
         return
     tpath = task.path
+    last_term = task.terminators(task.stages[-1]) if task.stages else []
     if not task.disable_when_done:
-        rep.note(db.name, subj, f"continuous mission: task {task.name} has no disable-when-done=\"true\", so it never ends by itself (done -> TaskDone only)", tpath, 2)
+        how = ("its last stage's done only reports TaskDone" if last_term else
+               "its last stage has no next-stage-when-done behavior: no done, no TaskDone; it runs until replaced or failed")
+        rep.note(db.name, subj, f"continuous mission: task {task.name} has no disable-when-done=\"true\", so it never ends by itself ({how})", tpath, 2)
+    elif task.stages and not last_term:
+        rep.warn(db.name, subj, f"task {task.name} is disable-when-done but its last stage has no next-stage-when-done behavior: the mission never ends by itself", tpath, task.line_of(f'label="{task.stages[-1].label}"') if task.stages[-1].label else 2)
+    for st in task.stages[:-1]:
+        if not task.terminators(st):
+            rep.error(db.name, subj, f"stage \"{st.label or '?'}\" of {task.name} has no next-stage-when-done behavior: the task never leaves it (validator task.stage.non-final-but-not-terminating)", tpath, task.line_of(f'label="{st.label}"') if st.label else 2)
+    for kind, ref in task.references():
+        p = model.entity_path(ref)
+        if not os.path.isfile(p):
+            rep.error(db.name, subj, f"task {task.name} references {kind} {ref}: no such entity XML", tpath, task.line_of(f'"{ref}"'))
+    for f in sorted(db.mission_frags.get(m.name, ())):
+        if f not in db.fragorder_names:
+            rep.error(db.name, subj, f"Models.xml lists frag order \"{f}\" under this mission, but Missions.xml has no such frag order", db.models_path)
     dia_names = set()
     for p in m.own_params():
         if not p.dia_name:
@@ -252,19 +267,22 @@ def main():
     if not model.types.ok:
         rep.warn("-", "sw.sword", f"parameter-type tables not found under {a.sword}: type and converter checks skipped")
     found = 0
+    where = []
     for db in dbs:
         others = [o for o in model.dbs.values() if o is not db]
+        n = 0
         for m in db.unit_missions:
             if a.all or (a.mission and m.name == a.mission) or (a.task and m.task_name == a.task):
-                found += 1
+                n += 1
                 check_mission(m, db, model, rep, others)
+        found += n
+        where.append(f"{db.name} {n}")
     if a.all:
         check_global(model, dbs, rep)
     if not found:
         what = f'mission "{a.mission}"' if a.mission else f"a mission with dia-behavior {a.task}" if a.task else "missions"
         rep.error("-", "target", f"no unit {what} in {', '.join(d.name for d in dbs)}")
-    print(f"sw.models root {a.root}, model {a.model}; {found} mission entr{'y' if found == 1 else 'ies'} checked "
-          f"in {', '.join(d.name for d in dbs)}\n")
+    print(f"sw.models root {a.root}, model {a.model}; unit mission entries checked per DB: {', '.join(where)}\n")
     sys.exit(1 if rep.dump() else 0)
 
 

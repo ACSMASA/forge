@@ -118,3 +118,23 @@ Measured with ElementTree over both DBs; "sorted" = Python ordinal sort (case-se
   stages: `mission_check --mission` 0/0 for both; `--all` on the copy = the same 22 errors / 12 warnings as the real
   tree; 786/786 sheets re-render; touched XML/.ts well-formed; bad spec → 12 errors listed at once; `--write` refused
   on a `master` checkout.
+
+## 10. Validation runs (step 10; general-purpose agents following the agent files, scratch copies of `ada`)
+- (b'') "COMBAT - Protect a supply convoy" → reported the duplicate "COMBAT - Escort logistic convoy" first, built
+  nothing, critiqued the existing one (ends only on convoy invalidity, mandatory meeting point). PASS.
+- (c) navigator only: flow of "COMBAT - Seize" (~17 calls) and MoveAlong checkpoint safety (~6 calls) answered from the
+  kit. PASS. Found: decisional_index §7 counted automat models for same-name unit missions (fixed in
+  build_models_index: keyed by section); CHECKPOINTS §4 "known-safe MoveAlong" wrong (fixed: Delay is the example).
+- (a) "COMBAT - Patrol a route once" → Patrol task never ends, built PatrolOnce (MoveAlong); flagged near-duplicate
+  "COMMON - Move along path"; sim-side proposal: sort keys in `getPersistentKey` (blast radius measured over 185
+  branches, sw.soult; versions equal), Lua-side alternative in `Scripts.lua`. mission_check 0/0. PASS.
+- (b) "COMBAT - Hold a crossing site" → new task + query `getPositionBackFromDangerDirection` + skill
+  `HoldForDuration` (absolute end date persisted, one parameter, stale-state test, cleared on done/destroy);
+  mission_check 0/0, lint 0 on the new skill (re-checked by the main session). PASS. Found: StandBy / Wait keep their
+  timer in `utilities.waitInMin` (`self[myself].tempsDebut`), lost on resume, unseen by the lint.
+- Fix list applied after the runs: agent file (root override in step 1, exact vs near duplicate, search by skill,
+  stopped-answer format, `-v`, frag orders, boilerplate gaps in one line, spec via stdin only); scaffold (frag orders,
+  per-DB objects, integer defaults, unknown-key warnings, clearer example); mission_check (behavior / query targets,
+  frag order names, last stage without terminator, wording); checkpoint_lint (`-v`, `waitInMin` timers,
+  create-reset flags); CHECKPOINTS (waitInMin, date restored, stale state from a non-resumed mission, Scripts.lua
+  sort); MISSIONS §3 explicit terminators; THEMES vocabulary (escort, wait / timer).
