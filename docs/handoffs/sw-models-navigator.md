@@ -216,7 +216,7 @@ _(filled in at step 1; a resumed session must not ask again)_
   - *Done when:* all questions are logged and the checker passes. The navigator is usable once Claude Code restarts.
 
 ### Phase B — ontology
-- [ ] **8. Survey: ontology.**
+- [x] **8. Survey: ontology.**
   - Cover:
     - how classes, interfaces and roles are declared, and how a `.lua` implements methods
     - `body-type`
@@ -311,4 +311,9 @@ _(one entry per finished step: date, step, what was produced, what the next step
 - 2026-11-05, step 7 done: 4/4 questions pass (14–23 tool calls each), 1 real model bug found (SafetyDismount), 1 kit
   claim corrected. Checker: all kits 657 refs, 0 problems; master and 3 client branches 0 problems. Phase A usable after
   a Claude Code restart.
+- 2026-11-05, step 8: `_build_notes.md` § B + prototype `docs/sw.models/_onto_proto.py` (Lua method scanner that
+  works: brace depth 1, outside blocks). 173 classes = **41 world + 132 task-metadata** (via PlatoonTask / CompanyTask);
+  ada passes directai rules A/B (0 violations), so anomaly value is in implementers (17 interfaces ≤1), 76 never-called
+  method names, duplicates. Role `.lua` = only `sw.ai.setRoleProperties` type maps; keys default to `sparkle.Object`
+  (sw.sword `ontologyKeys`); mission param type → key in `DEC_Decision.cpp::functorsBM`. Answers from both navigators verified.
 

@@ -116,3 +116,152 @@ Read on sw.models `test_DrawingTemplates` @ `e10c2a1336`. Paths below are relati
 - One line per entity, greppable: `name · kind · lua? · uses (skills/queries/tasks/resources) · used by · integration calls · first sentence of description`.
 - Sections: entities by kind; missions per DB (mission name → dia-behavior → task, models offering it); models per DB
   (model → role, #missions); frag orders (dia-type → initializer → task); unresolved refs; counts.
+
+## § B. Ontology survey (step 8, 2026-11-05)
+
+Read on sw.models `test_DrawingTemplates` @ `e10c2a1336`; paths relative to `decisional/dia5/`. Prototype scanner:
+`docs/sw.models/_onto_proto.py <dia5 dir>` (fold into `tools/build_models_index.py`, then delete it in step 9).
+
+### Declarations (XML)
+- Root `<class name abstract?>`: one `<extends>` max (0 multi), many `<implements>`, optional `<constructor>` with
+  `<argument-key name>` (→ `attributes.<name>` in `__init`), `<methods><method name abstract?>` with `<argument name>`
+  / `<return>` / `<type>`. 880 methods carry `abstract=`, only **7 are `abstract="true"`** (Element ×3,
+  LocalizedElement ×2 `getPosition`/`getPositions`, crowd LocalizedElement ×2, PlatoonTask `fillParameters`…).
+  A subclass may redeclare a method `abstract="false"` (LocalizedElement `perceptionLevel`).
+- Root `<interface name>`: `<extends>` (0 or 1 here), `<methods>` (signatures only), never a `.lua`.
+  25 of 36 interfaces extend `common.agent.world.interfaces.Destination`.
+- **173 classes = 41 world classes + 132 task-metadata classes.** The metadata classes chain to `sparkle.TaskMetadata`
+  through `common.agent.world.PlatoonTask` or `common.commander.behaviors.tasks.knowledges.CompanyTask`; they live in
+  `*/tasks/knowledge(s)/` (mildb 67, security 39, military 15, common 8…) and are linked from tasks by
+  `<annotation key="spark.metadata-class">`. The other 41 chain to nothing (root classes). → the index must split
+  world classes from task-metadata classes, or the anomaly report drowns.
+- Max inheritance depth 6 (`navy.world.AircraftTransporterMeKnowledge`); MeKnowledge family depth 5.
+- Roles (32): `<extends>` one role, optional `<body-type><object type/></body-type>` (14 roles; the rest inherit),
+  `<skills><skill name><modifier name>`, `<default-task>`. Roles declare no methods. 14 roles have a `.lua`, and
+  every one is only `sw.ai.setRoleProperties({ ontology = { types = { key = class, … } } })`.
+
+### Implementation (class `.lua`)
+- 173/173 classes have a `.lua`; `HumanWound.lua` is empty (`return {}`). Shapes: `return { name = function( self, … ) … }`
+  (171 files; 10 start with `local super = __super`, used as `super( self ):method( … )` to call the parent), and
+  `local X = {} … X.name = … return X` (the two `AircraftTransporterMeKnowledge`).
+- Method value forms: `function` 1479, `spark.startStopAction( { start/started/stop } )` 165 (phase C), alias to another
+  function 1. Extra special key `__daihash` (Point, UnitType; directai hash hook) and `__init` (constructor).
+- Scanner rule that works: tokenise Lua with comments/strings blanked; a key is a method when it is assigned at brace
+  depth 1 (or `X.name` at depth 0) **outside any function/if/for/while/do/repeat block and outside call parentheses**
+  (else `start`/`started` inside `spark.startStopAction( {` at depth 0 leak in for the `X.name =` form: add paren depth).
+- Results on ada: **0** non-abstract declared methods missing from their own `.lua`; only `__daihash` keys are in a
+  `.lua` but undeclared. Interface methods missing from a class's whole chain: 6, all on abstract classes
+  (`Element`, `LocalizedElement`) whose subclasses implement them → check concrete classes only. 0 misses on concrete classes.
+- 223 method names are implemented in more than one world class, mostly overrides along a chain or the same
+  interface method (`getPosition` in 22 classes). "Duplicate" for the anomaly report = same name implemented in
+  ≥2 classes with no common ancestor class or common interface that declares it.
+
+### Interfaces: implementers
+- Direct implementers ≤ 1 (17 interfaces): 0 → `common.agent.world.interfaces.Agent` (only extended by 2 interfaces);
+  1 → CheckPoint, Crowd, DecontaminationPlot ×2, Fire, Follower, Medical, NonTeammate, Observable, PopulatedArea,
+  ProjectileTarget, ResourceNode, Teammate, ThreateningUnit, UndergroundNetwork, crowd Destination. Count
+  transitively too (subclasses of an implementer, interfaces extending it).
+
+### Callers (upper bounds)
+- XML never calls methods (only `<call query=…>`). Callers are Lua `obj:name(` (regex `:\s*([A-Za-z_]\w*)\s*[\(\{"]`
+  on comment-stripped Lua) in model Lua and in sw.sword `data/app-data/resources/integration/*.lua` (58 files).
+  The receiver's type is unknown statically → **match by name, upper bound**; a name shared by many classes gets
+  the same caller list for each.
+- 805 declared method names; **76 have no `:name(` call anywhere** (spot-checked `getHQ`, `communicate`,
+  `getCurrentSpeed`, `affinityLevel`, `WLRAllowedOnCrowd`, `getParameters`: raw-grep hits are only same-named
+  `integration.*` functions). 13 are called only from the integration layer (`canMissionEnd`, `getPionEfficiency`,
+  `computeEffectsLevels`, `init`, `destroy`, `isDynamic`, …: task-metadata hooks the kernel side calls).
+- Type references: `<object type="X"/>` (3491) in skills/queries/tasks/classes = "used as a type by". 87 are `sparkle.Object`.
+
+### Roles and the ontology type map
+- `sw.ai.setRoleProperties` keys (military Agent, 20): body, object, urbanBlock, point, area, direction, automat,
+  agent, agentKnowledge, population, genObject, limaStatique, fragOrder, resourceNetwork, humanWound, equipmentType,
+  fuseau, trackingPosition, cbrnProtection, unitType. Per role: `body` = the role's own or inherited `<body-type>`
+  (always consistent here; Submarine has no `<body-type>` but its `.lua` sets `body = navy.world.MeKnowledge`, as Vessel).
+  Crowd: own map (crowd classes, 10 keys). security Agent/FlyingAgent: no limaStatique/humanWound/equipmentType.
+  test roles: `limaStatique = common.agent.world.Line`.
+- Model Lua builds world objects with `CreateKnowledge( integration.ontology.types.<key>, <sim entity> )` (356 calls)
+  and `CreateProxyKnowledge` (9). Keys used: point 138, agent 74, agentKnowledge 32, area 29, object 24, …
+- `integration.ontology.types.liaisonInstance` (Agent.lua `createNetwork`, FragOrder.lua) and `.transmitterType`
+  (FragOrder.lua) are in no role map: they get the `sparkle.Object` default from sw.sword `Integration.lua`
+  `ontologyKeys` (verified), so those objects are plain `sparkle.Object` with no model methods. The index's
+  "undefined keys" check must use role map ∪ `ontologyKeys` and flag "default only" separately.
+- `body-type` on other entities: skills 376/562 (MeKnowledge 276, commander MeKnowledge 51, navy 27, Flying 10,
+  CrowdBody 10, and 2 skills typed by the **interface** `ForceRatioSource`), queries 4.
+
+### directai rules (dai-navigator, read on directai master @ 9629aaf1a = dai 5.10; anchors spot-checked)
+- Severities: ada `decisional.xml` `model-version="6.24"` → strict mode at runtime too; validator runs in
+  `spark.createBrain` and in sparkcheck; runtime warnings are dropped (`plugins/spark/reporting.lua`).
+- Class: one `<extends>` (XSD), implicit parent `sparkle.Object`; interfaces `<extends>` 0..n, all methods abstract.
+- **Rule A (XML)** `spark/validation/validators/object.lua::checkAllMethodsImplemented`: in a non-abstract class,
+  every interface/ancestor method must be **re-declared non-abstract in the XML of the class or an ancestor**, else
+  strictError `class.method.unimplemented`. ada: 0 violations (prototype check over concrete classes).
+- **Rule B (Lua vs own XML)** `validation.class.validateScript`: every function in the class `.lua` must be declared in
+  that class's own `<methods>` (`class.lua.method.missing-declaration`, even if a parent/interface declares it);
+  every own non-abstract method must be in the own `.lua` (`class.lua.method.unimplemented`); exempt
+  `uncheckedMethodNames` (`__call`, `__daihash`, `__eq`, …); `<constructor>` ⇔ `__init` in own `.lua`.
+  ada: 0 violations (scanner: only `__daihash` undeclared; `__init` ⇔ `<constructor>` matches for all 173).
+  → the anomaly report's "declared vs implemented" will be empty on a clean model; keep it (catches new breakage
+  before sparkcheck) but it isn't a refactoring signal. The useful signals are implementers, callers, duplicates.
+- `local super = __super` must be captured at file top (`__super` exists only while the file runs, nil in sparkcheck);
+  `super( self ):m()` calls the parent's `m`. Methods merge parent → child (`plugins/spark/class.lua::mergeTable( methods`).
+  `spark.startStopAction{…}` returns a function: an ordinary method that must be declared.
+- Roles: body-type, modifiers, default-task, resources, properties are inherited (nearest body-type:
+  `validators/role.lua::getBodyType`). Static check `checkSkillBodyTypeConstraints`: role body type must be a subtype
+  of each `<skills>` skill's body-type (strictError `entity.has-wrong-body-type`); skills reached via tasks/links are
+  only checked at runtime with `--dec-typecheck` (`plugins/spark/utilities.lua::function utilities.checkAdequacy`).
+  `sw.ai.setRoleProperties` content is opaque to DAI; child roles get a shallow copy of the parent's properties
+  (so roles without a `.lua` inherit the parent's type map).
+- Types are nominal: `<object type="I"/>` accepts implementers (direct, via interface extends, via superclass) and
+  subclasses. Runtime lookup is **case-insensitive** (`plugins/spark/library.lua::string.lower( name )`); the
+  validator compares names as exact strings. The 2 ByPass mismatches are task `metadata-class` refs to classes that
+  extend `PlatoonTask` → resolve, no diagnostic (verified parent).
+- Built-ins in directai `data/sparkle/src/sparkle/`: `sparkle.Object` (root; default `__init` copies attributes,
+  `__daihash`, `__tostring`), `sparkle.Task` (task metaclass), `sparkle.TaskMetadata` (required base of metadata
+  classes), `sparkle.deprecated.RoleBody` (empty, deprecated tag interface; `common/agent/world/MeKnowledge.xml`,
+  `Company.xml` still cite it). Legacy aliases `plugins/spark/library.lua::oldCoreLibAliases`.
+- Gotcha candidates (step 10): rule A/B above; `__super` top-level only; case-insensitive runtime vs exact validator.
+
+### World-object creation in sw.sword (sw-sword-navigator, read on sw.sword master; anchors spot-checked)
+- `sw.ai.setRoleProperties` is **directai**: `plugins/spark/role.lua::function internal.role.setRoleProperties`
+  (stored on the role, set while the role `.lua` loads), exposed in `plugins/spark/compatibility.lua`.
+- sw.sword `data/app-data/resources/Integration.lua::local ontologyKeys = {`: `integration.ontology.types` is a live
+  proxy on `sw.ai.getRoleProperties().ontology.types` of the current brain's role; missing keys among 23
+  (agent, agentKnowledge, area, automat, body, cbrnProtection, direction, equipmentType, fragOrder, fuseau, genObject,
+  humanWound, itinerary, liaisonInstance, limaStatique, object, point, population, resourceNetwork, taskgroup,
+  transmitterType, unitType, urbanBlock) default to `sparkle.Object`. `avoidingArea` is read
+  (`integration/ToolsQueries.lua::getAvoidingPositionsFor`, deprecated) without a default.
+- `integration/SimulationIntegration.lua::function CreateKnowledge( knowledgeType, knowledgeSource, params )`: cache
+  per brain keyed by **source only** (not type), weak; else `knowledgeType:new( params, knowledgeSource )` →
+  directai `class.lua::NewClass:new` sets `source`, calls `__init( attributes )`. `CreateProxyKnowledge`: global
+  cache keyed by source and type. `InitMePlatoon/Automat/Crowd/TaskGroup` create the body from `types.body`, call
+  `spark.me:setBody`, set global `meKnowledge`; called from C++ `DEC_RolePion_Decision.cpp` etc. `myself` = raw C++
+  decision object (`meKnowledge.source == myself`).
+- Mission parameters: `src/libraries/simulation/Decision/DEC_Decision.cpp::functorsBM[ "Agent" ]` maps Missions.xml
+  `<parameter type>` → ontology key (Point→point, Polygon→area, Path/Itinerary/Line→list of point, Heading→direction,
+  Agent→agent, AgentKnowledge, ObjectKnowledge→object, CrowdKnowledge→population (source = numeric id),
+  UrbanKnowledge→urbanBlock, PhaseLine→limaStatique, PlannedWork→genObject, MedicalPriorities→humanWound,
+  MaintenancePriorities/EquipmentType→equipmentType, LiaisonInstance, TransmitterType, …), then Lua
+  `InitTaskParameterFunction` wraps each with CreateKnowledge. → the index can show, per class, which mission
+  parameter types land on it through the role maps (Missions.xml type → key → class per role).
+- Only class hard-coded in integration Lua: `common.agent.world.ReachingArea` (`ToolsQueries.lua::CreateProxyKnowledge( common.agent.world.ReachingArea`).
+  Everything else goes through `integration.ontology.types.*` → per-class "integration call sites" = the keys mapped to it.
+- `CommunicationIntegration.lua::initializeAssignMissions` maps types to `DEC_AssignMission*Parameter`, climbing
+  `spark.getSupertype` → subclasses inherit their parent's assignment.
+- Gotcha candidates (step 10): cache keyed by source not type; Path/Line params are point lists; key default
+  `sparkle.Object`. Unverified caveat: TransmitterType/LiaisonInstance passed with the list flag on a single pointer.
+
+### Decisions for the generator (step 9)
+- Sections: world classes (name · abstract · extends chain · implements (own + inherited) · ctor keys · methods
+  declared / implemented / inherited / overridden / startStopAction · used as type by N · lua callers by name);
+  interfaces (extends · methods · direct and transitive implementers · used as type by N);
+  task-metadata classes (compact: name · parent · tasks that cite it · overridden hooks);
+  roles (extends · effective body-type · ontology type map, diff vs parent · skills · default task);
+  anomaly report (interfaces 0/1 implementers, direct and transitive; rule A / rule B violations (expected 0);
+  never-called methods; methods called only from integration; duplicates with no common declaring ancestor/interface;
+  ontology keys used but in no role map (default `sparkle.Object`) or in neither map nor `ontologyKeys`; depth).
+  Roles: effective type map = own `.lua` map or nearest parent's; per class, the keys/roles mapping to it and so the
+  Missions.xml parameter types that land on it (table from `DEC_Decision.cpp::functorsBM`, hard-coded in the generator
+  with that anchor).
+- Header: same branch/commit line as the decisional index, plus "callers are name matches: upper bounds".
+- Count check for step 9: 173 classes (41 + 132), 36 interfaces, 32 roles.
