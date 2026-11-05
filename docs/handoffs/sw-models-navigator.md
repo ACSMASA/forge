@@ -1,5 +1,8 @@
 # Handoff: build the sw.models navigator
 
+**DONE (2026-11-05).** All steps finished; this file is now a record. The result: `.claude/agents/sw-models-navigator.md`,
+`/models`, `docs/sw.models/` (THEMES, README, three generated indexes), `tools/build_models_index.py`.
+
 > **How to use:** start a Claude Code session in `C:\MASARepo\forge` and say
 > "Follow `docs/handoffs/sw-models-navigator.md`" (first time) or
 > "Continue `docs/handoffs/sw-models-navigator.md` from the first unchecked step" (after an interruption).
@@ -254,7 +257,7 @@ _(filled in at step 1; a resumed session must not ask again)_
   - In `sw-sword-navigator.md` and `docs/sw.sword/THEMES.md`, point model-side questions to the new navigator.
   - Check that `docs/directai/THEMES.md` covers the Spark type system (class / interface / role / body-type, validation rules) and resources and actions (arbitration, `spark.action`, `startStopAction`). Add verified, anchored rows there if it doesn't.
   - *Done when:* the checker passes on all kits.
-- [ ] **15. Close.**
+- [x] **15. Close.**
   - Update the forge memory.
   - Move anything worth keeping from `_build_notes.md` into THEMES gotchas, then delete the notes.
   - Mark this handoff **DONE** at its top.
@@ -358,3 +361,6 @@ _(one entry per finished step: date, step, what was produced, what the next step
   directai THEMES already had rows for roles/body type, classes/interfaces, resources, actions; fixed the wrong "selected
   boost" gotcha (default 1.0) and added 5 (resources refilled per tick + only `select` nodes consume, `spark.action`
   select/deselect generation, brain destruction runs no stop, class rules A/B, role body check). All kits 738 refs, 0 problems.
+- 2026-11-05, step 15: forge memory updated; `_build_notes.md` reviewed and deleted (kept: RoleBody leftover gotcha,
+  corrected to 4 classes; everything else was already in THEMES or the indexes). Agent context check now lists models with
+  `git ls-tree` (an `ls` showed an empty `UKR/` dir left by the UA_Demo checkout) + THEMES gotcha. Checker 740 refs, 0 problems.
