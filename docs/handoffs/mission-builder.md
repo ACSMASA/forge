@@ -314,7 +314,7 @@ Path aliases:
   - Checks table: what each ant target catches, and what nothing catches.
   - The designer's build order.
   - Add the file to the sw.models kit `files` in `tools/check_themes.py`. The checker passes.
-- [ ] **3. `docs/sw.models/CHECKPOINTS.md`.**
+- [x] **3. `docs/sw.models/CHECKPOINTS.md`.**
   - What is saved, lost and rerun (anchored), and the resume sequence as anchored hops.
   - Hazards: whole-state drop, unhashable params, `pairs` key order, `or default` booleans, stale action ids,
     non-idempotent `create` / `start`, re-sent reports, stage-shared `seqStage` tables, never-cleared states.
@@ -429,3 +429,6 @@ Path aliases:
 - 2026-11-05 step 2: `MISSIONS.md` (anatomy, parameters, task rules, default task, checks, build order). Checker gets
   cross-repo aliases `sim/ int/ spark/ val/` for the sw.models kit. New facts: Stages.xml must hold every dia5 label in
   **both** DBs; a single-behavior last stage is not stage-ending unless the task is `disable-when-done`.
+- 2026-11-05 step 3: `CHECKPOINTS.md` (saved/lost table, resume hops, 14 hazards, conventions, test recipe, 7 sim-side
+  gaps with blast-radius recipe and version-freeze rule). Gotcha lines in sw.sword / directai THEMES, sw.models THEMES
+  row. New: `seqStage` tables are per behavior index, shared across sequential stages; actions use the sim id space.
