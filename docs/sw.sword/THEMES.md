@@ -55,7 +55,7 @@ Blessé = wounded · Mort = dead · Panne = breakdown · Carburant = fuel · Mun
 | Checkpoints | CheckPoint, persistent state | `sim/CheckPoints/MIL_CheckPointManager.cpp`, `DEC/Brain.cpp` | — | `int/SimulationIntegration.lua` | — |
 | Tests | simtests, lunit | `src/masa/sword/simtests/`, `src/tests/` | — | `data/app-data/resources/integration tests/` | — |
 | Build checks | checkdec, checkreports, checkintegration, deploy | `build/build.xml`, `build/checkreports.py` | — | — | `sw.models/data/data/models/decfunctions.txt` |
-| DirectAI / spark internals | spark, createBrain, DeliverMessages | `directai/src/libraries/directai/` | — | — | — |
+| DirectAI / spark internals (see `docs/directai/THEMES.md`, dai-navigator) | spark, createBrain, DeliverMessages, Activate, Feedback, sparkcheck | `directai/src/libraries/directai/`, `directai/src/libraries/plugins/spark/` | — | — | — |
 
 ## Gotchas you would not think to grep for
 

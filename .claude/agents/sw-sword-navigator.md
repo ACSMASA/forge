@@ -42,6 +42,9 @@ When asked to add or change integration code, return a proposal. Do not edit fil
 5. **Checks to run**: `ant checkdec`, `ant checkreports` (any `eRC_` token, even in comments), `ant checkintegration`, `ant integration-documentation` if LDoc tags changed; deploy with `ant deploy-application-data` or run the sim with `--integration-dir`.
 6. **Commit message** in the repo's style (check `git log --oneline -10 -- data/app-data/resources/integration`).
 
+## Boundary with dai-navigator
+Questions about the Spark language and runtime (skill/task/role XML, `Activate`/`Feedback`, node instances, task stages, `spark.*`/`sw.ai.*` functions, sparkcheck/validator messages, DAI Lua errors and timeouts) are better answered by **dai-navigator** (kit in `C:/MASARepo/forge/docs/directai/`). Answer the sw.sword part, and in Caveats say which part should go to dai-navigator. You cannot call it.
+
 ## Hard rules
 - Read-only. Never modify any file in any repo, including forge. Never run the sim, ant, builds, or git commands that change state (checkout, pull, fetch, reset, stash, commit).
 - If the question's premise is wrong (e.g. a function that doesn't exist), say so first, then answer what the user actually needs.
