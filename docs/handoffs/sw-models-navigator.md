@@ -243,7 +243,7 @@ _(filled in at step 1; a resumed session must not ask again)_
     - every `skills/actions/` skill appears, with its framework
     - every resource lists the skills that acquire it
     - every `startStopAction` method lists its handlers
-- [ ] **13. Actions in THEMES and the agent.**
+- [x] **13. Actions in THEMES and the agent.**
   - Add the "Resources & actions" row and its gotchas (deprecated `startStopAction`, truthy `_DEC__StopAction`, actions not stopped on mission change).
   - Add the agent rule to trace the whole stack and name the framework.
   - Validate with one action question (e.g. "which skills compete for the same resource as `Activate`, and which framework does each use?").
@@ -342,3 +342,13 @@ _(one entry per finished step: date, step, what was produced, what the next step
   can hold several `node "…"` tables (scan all). Anomalies: 8 declared-not-acquired, 2 `acquire` on activate-only nodes
   (navy AirDisembarkFromLandingShipDock, ParallelLoad), 6 startStopAction-without-`started` used in `if` - real bug:
   `EquipWithNBCProtection` always sends `equipActionImpossible`. Shared Lua scanner refactored (`lua_top_keys`); ontology output unchanged.
+- 2026-11-05, step 13: THEMES "Resources & actions" row, vocabulary (action skill / resource) corrected, 9 gotchas
+  (capacity 1 + per-tick arbitration, declared-not-acquired + multi-node skills, deprecated startStopAction called every tick,
+  no `started` -> nothing returned + EquipWithNBCProtection bug, "do once" idiom, spark.action stop = deselect, kernel keeps
+  actions on mission change, starters not recognisable by name, resource vs shared world methods); agent: action index
+  description, header check on all 3 indexes, new step 7 (trace the whole stack, name the pattern). Validation "skills
+  competing with Activate, framework, how stopped": **pass**, 10 tool calls; ActivationCapacity = Activate (instantaneous),
+  ActivateRequestSensors / DeactivateSensors (select+deselect over start-only startStopAction methods), none a kernel action.
+  Citations checked (MeKnowledge sensor methods, FlyingMeKnowledge land/takeOff, DeactivateSensors deselect, plain
+  RegisterFunction of the DEC calls). Applied its map update. Note: master now also has a `UKR` model dir. Checker 738 refs,
+  0 problems; 3 client branches 0 problems.
