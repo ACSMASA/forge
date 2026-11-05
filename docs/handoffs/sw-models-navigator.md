@@ -210,7 +210,7 @@ _(filled in at step 1; a resumed session must not ask again)_
     - the answer format with "Map updates"
   - Add the skill.
   - *Done when:* the checker passes on the agent file.
-- [ ] **7. Validate A.**
+- [x] **7. Validate A.**
   - Run each of the user's questions in turn. **Log each result** before starting the next: verdict, tool calls, and citations checked.
   - Apply verified map updates and re-run the checker.
   - *Done when:* all questions are logged and the checker passes. The navigator is usable once Claude Code restarts.
@@ -302,4 +302,13 @@ _(one entry per finished step: date, step, what was produced, what the next step
   `INF.Mechanised company`, model "Infantry platoon" → `military.agent.roles.Platoon`. Citations checked: Units.xml
   block, Automats.xml block, model counts 2 vs 125, anchors. Applied: composition row detail, 2 gotchas (per-equipment
   data, find by nature-app6). Checker 646 refs, 0 problems; client branches 0 problems.
+- 2026-11-05, step 7 Q4 (rename Reconnoitre): **pass**, ~22 tool calls. Must change: task file + `dia-behavior` of 2
+  missions per DB; commander `<string>` only if the dia-type changes; translations/sheets/Models keyed by mission name;
+  `ant check` would not fail. Checked client branches with `git grep`. Citations checked: `getAgentTaskKnowledge`
+  (dia-type → `DEC_GetDiaBehaviorFromDiaType`), `Reconnoitre_trafic` mission, no `wwt/Locales`, changelog, checkdec warning.
+  **Corrected a wrong gotcha** (commander strings are mission dia-types, not task names) in THEMES, the agent's impact
+  step and the index legend; added the mission-name keying gotcha, a "Rename / move" row, and a sharper checkdec gotcha.
+- 2026-11-05, step 7 done: 4/4 questions pass (14–23 tool calls each), 1 real model bug found (SafetyDismount), 1 kit
+  claim corrected. Checker: all kits 657 refs, 0 problems; master and 3 client branches 0 problems. Phase A usable after
+  a Claude Code restart.
 

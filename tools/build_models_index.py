@@ -327,7 +327,7 @@ def build_decisional(repo, model, out):
     w(f"Conventions: an entity `a.b.C` lives at `data/data/models/{model}/decisional/dia5/a/b/C.xml` (+ `C.lua` when "
       "Lua = yes). Tasks never have Lua. `via` tags: **beh** = task/role stage `<behavior>`, **link** = skill `<link "
       "target>`, **call** = `<call query>`, **rsk** = role `<skills>`, **res** = skill `<resources>`, **meta** = task "
-      "`spark.metadata-class`, **str** = XML `<string>` value (commander task lists), **lua** = dotted name in Lua "
+      "`spark.metadata-class`, **str** = XML `<string>` value (commander mission lists: these hold mission dia-types, matched here only when equal to a task name),**lua** = dotted name in Lua "
       "(string or bare; comments stripped), **ext/impl/type** = `<extends>` / `<implements>` / `<object type>`. "
       "Lua references are textual: a name built at runtime is not found.\n")
 
