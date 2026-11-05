@@ -265,3 +265,194 @@ folded into `tools/build_models_index.py` (`lua_class_methods`, `build_ontology`
   with that anchor).
 - Header: same branch/commit line as the decisional index, plus "callers are name matches: upper bounds".
 - Count check for step 9: 173 classes (41 + 132), 36 interfaces, 32 roles.
+
+## § C. Action stack survey (step 11, 2026-11-05)
+
+Read on sw.models **`UA_Demo` @ `99916c753a`** (the checkout moved off `test_DrawingTemplates`); paths relative to
+`decisional/dia5/`. Survey scripts were throwaway (scratchpad); counts below are for UA_Demo.
+
+### Model side: declarations
+- Resources: 25 `<resource name>` roots, no attributes besides `name`, only a `<description>` (no capacity):
+  `common/agent/behaviors/resources/` 21, `military/agent/resources/` 3, `crowd/behaviors/ressources/Motion.xml` 1
+  (dir spelled `ressources`; name `crowd.behaviors.ressources.Motion`, distinct from `common…resources.Motion`).
+- Action skills: 134 (`common/agent/behaviors/skills/actions` 92, `military/agent/skills/actions` 29,
+  `crowd/behaviors/skills/actions` 8, `common/commander/behaviors/skills/actions` 5). **Branch-dependent**: navy
+  actions (2) exist on `master` and `test_DrawingTemplates`, not on UA_Demo; master has 140 action XMLs (with category-info).
+- Skills with `<resources>`: 70 = 57 action skills + 13 elsewhere (`common…skills.BuildInstantaneously`,
+  `primitives.Deconstruct`, military `CheckSeabed`, `DeactivateRadarWhenUnderwater`, `DestroyWithGroundToAirMissiles`,
+  `ListenRadar/RadioEmissions`, `MonitorWithRadars`, `primitives.Respond`, `primitives.SupportWithFires`, navy
+  `AdoptSafetyPosture`, `AirDisembarkFromLandingShipDock`, `Transfer`). 77 action skills acquire nothing.
+  → the action index must cover **every skill with `<resources>`**, not only `skills/actions/`.
+- Lua acquire: `acquire = { [ skill.resources.<variable> ] = 1 }` (always `= 1`; MoveTo acquires two: motion + deployment).
+  **8 skills declare a resource in XML but never acquire it in Lua**: ExtractDead, ExtractWounded, BuildInstantaneously,
+  primitives.Deconstruct, DestroyWithGroundToAirMissiles, MonitorWithRadars, primitives.Respond,
+  primitives.SupportWithFires. Some are parents whose child acquires it (Respond → `Activate( skill.links.engage, prio, … )`,
+  Engage acquires DirectFireCapacity). 0 acquire without XML declaration; 0 undeclared resource names.
+- Resource → skills (who competes; UA_Demo): Motion 11 (MoveTo, MoveAlongPath, MoveAndTakePosition, Wait, TakeOff,
+  Activate/RemoveCBRNProtection, Resupply, TransferDotation, navy AirDisembark…, Transfer), BuildCapacity 9,
+  RadarCapacity 7, RadioCapacity 4, ActivationCapacity 3, DirectFireCapacity 3, Posturing 3, SplitCapacity 3,
+  DeploymentCapacity 2 (Deploy, **MoveTo**), Mounting 2, … crowd Motion 3. Full list = generator output.
+- Arbitration input on the model side: `Activate( skill.links.<link>, <priority>, { params } )` from the parent skill
+  (e.g. `Activate( skill.links.engage, entity:safetyPriority(), … )`, `Activate( skill.links.moveTo, 1, … )`).
+
+### Model side: the action patterns (what "framework" means per skill)
+1. **`spark.action( rootnode ){ acquire, start, started, stop }`** — 7 skills (ActivateEquipment, DeactivateEquipment,
+   DecontaminateAnArea, DetachUnit, DetachUnits, ReattachToUnit, military ChangeDivingDepth). Kernel id kept on the node:
+   `start: self.actionID = self.params.owner:activateEquipment( type )` → `Agent.lua` →
+   `integration.startActionChangeEquipmentActivation( self.source, type, true )`; `started` polls and sends the
+   feedback; `stop: scripts.stopAction( self.actionID )` → `_scripts/Scripts.lua::scripts.stopAction` →
+   `integration.stopAction( actionID )`. ChangeDivingDepth is pure Lua (no kernel action; `setDivingDepth` each tick).
+2. **World-class `spark.startStopAction{ start, started, stop }` methods** called from a skill's `select` (deprecated):
+   166 definitions, 126 names, 23 class files (MeKnowledge 64, Object 18, AgentKnowledge 13, Crowd 11, Area 10, …),
+   not only the six `MeKnowledge*`. Handler sets: start+started+stop 86, start 29, start+started 22, start+stop 19,
+   started+stop 5, started 4; `started` is a function (101) or a bare `integration.X` reference (16, e.g.
+   `deploy.started = integration.isDeployed`). Example: `Deploy.lua select: if meKnowledge:deploy() then Feedback(deployed)`
+   → `MeKnowledge.lua::deploy = spark.startStopAction(` start `integration.startDeploy()`, started `integration.isDeployed`,
+   stop undeploy. Also used as a **"do once while called" idiom with no kernel action**: `displayReportOnce`,
+   `displayReportOnceWithTimeParams`, `sendDynamicMessageOnce` (start = `integration.pionRC`).
+   Callers of these names: non-action skills 255 file×name pairs, action skills 104, world classes 41, queries 18 →
+   the framework is mostly reached **outside** `skills/actions/`.
+3. **Hand-written lifecycle in a plain `rootnode`**: `select` calls a world method every tick, `deselect` / `destroy` call
+   the pause/stop method. 10 action skills have `deselect` (MoveTo, crowd MoveTo, Observe, Wait, GetTransported,
+   TransferDotation, ChangeSymbol, ActivateRequestSensors, DeactivateSensors, military ActivateLogisticChains).
+   MoveTo: `meKnowledge:moveTo(…)` → `destination:reachIt(…)` → `LocalizedElement.lua::integration.moveToItGeneric(…)`
+   (the **integration layer keeps the action state**, keyed on the object); `deselect` → `pauseMovement` →
+   `integration.deselectMoveToIt`, `destroy` → `stopMovement` → `integration.stopMoveToIt`.
+   No skill writes top-level `start =`/`stop =` outside `spark.action` (0 files).
+4. **Instantaneous**: `select` calls a plain method once and sends the feedback, e.g. `Activate.lua select:
+   self.params.object:activateIt()` → `Object.lua::activateIt` → `integration.activateIt( self )`.
+5. Commander `activate`-only "actions" (IssueMission, CoordinationManager, ManageEndMission,
+   ManageAddedAndDeletedUnits) and StandBy / MoveAndTakePosition / ImmunizeToObjectAttrition: no kernel action
+   pattern of their own; classify by what they call.
+- **Resolution is by method name** (receiver type unknown): 20 names are a `startStopAction` in one class and a plain
+  function in another (`moveTo`, `reachIt`, `removeIt`, `attackIt`, `takeOff`, `land`, `loadIt`, …) and 21 names are
+  `startStopAction` in >1 class → the per-skill framework is an upper bound, and the chain can be ≥2 world calls deep
+  (MoveTo → moveTo → reachIt). 6 `startStopAction` names have no `:name(` caller (buildObjectOnPosition,
+  destroyItWithMissiles, getDistanceFromForwardLine, modifyMedicalPriorities, operateATransportedAgent, respondToIt).
+
+### directai: arbitration and the two Lua frameworks (dai-navigator, directai master @ 9629aaf1a = dai 5.10; anchors spot-checked)
+Paths relative to directai `src/libraries/`; `core/` = `directai/brain/`, `spark/` = `plugins/spark/`.
+- **Capacity 1 by default** for every resource a skill declares (`spark/brain.lua::implicit default capacity`); only a
+  role `<resource initial-capacity>` or `spark.setResourceCapacity` change it — neither is used in ada (grep) → every
+  ada resource is exclusive. `acquire` `n` = units taken (must be ≥ 1, runtime check only).
+- **Re-arbitrated every tick from scratch**: resources refilled (`core/Engine.cpp::ResetUsage();`), candidates run
+  `select` in descending **activity** order; all-or-nothing on the node's resources. Activity = Σ activator activity ×
+  `Activate` priority. ada passes priority 1 almost everywhere → **ties**, broken by candidate insertion order (node
+  depth via an unstable `std::sort`): treat as arbitrary (code reading, untested). The selected boost defaults to 1.0
+  (`core/VirtualMachine.cpp::? 1.f : (float)lua_tonumber( pState, 3 )`): the current holder is **not** favoured
+  (no `instances = { boost = }` in ada).
+- Only nodes with a `select` consume their `acquire` (`core/VirtualMachine.cpp::instance.SetSelectable(`): an
+  `activate`-only node acquires nothing. Scope = one brain; a parent and its child acquiring the same resource compete.
+- Lifecycle: `create` once at first activity > 0; `activate` every active tick; `select` every tick it is a candidate and
+  wins; `deselect` on selected → not selected (lost resource, activity 0, suspend/halt); `deactivate` + `destroy` at
+  activity 0 (one tick after the parent stops `Activate`-ing it). A skill that loses its resource stays alive
+  (`deselect` only) and is re-selected when it wins again.
+- Validator (`spark/validation/validators/skill.lua`): undeclared `skill.resources.x` → `skill.lua.resource.unknown`;
+  bad acquire key/amount; duplicate binding. **XML-declared but never acquired: no diagnostic** (the 8 skills above).
+- **`spark.action( rootnode ){}`** generates `select`/`deselect` (`spark/integration.lua::-- Generate "select()" in terms
+  of "started()" and "start()"`): `start` in the first `select` after each (re)selection, `started` on every `select`
+  (same call as `start` too), `stop` = `deselect`. Lose the resource → `stop`; win it back → `start` again. Writing
+  `select`/`deselect`/`activate`/`deactivate` yourself → `action.unexpected-field`. No `Activate` inside `stop`.
+- **`spark.startStopAction{}`** (`spark/integration.lua::function spark.startStopAction`): state **per brain**, keyed by
+  (`self`, the method, `hash` of the other args) — **not by calling node**. Each call: `start` if that key was not
+  called in the *previous* tick, then returns `started(...)` (nothing if no `started` → `if obj:m() then` never true).
+  `stop` runs from an end-of-tick callback (`checkFunctionsNotCalledOnLastTick`) for keys called last tick and not this
+  one, with the args of the first earlier call. So: **must be called every tick**; a `select` that calls it once (behind
+  `if not self.started`) gets `start` then `stop` a tick later. Two callers, same object + args = one shared action;
+  both call `start` if they begin in the same tick (verified: start only checks last tick's table; the doc comment
+  claims once). Different args (tables hashed by content, userdata by address) = separate actions. Needs no resource.
+  Deprecated only in the LDoc (`@deprecated Actions are better expressed as DAI action nodes using @{spark.action}`); no
+  runtime or validator warning. Aliases `sw.ai.startStopAction`, `masalife.brain.integration.startStopAction` (index, unopened).
+- **Brain destruction runs no `deselect`/`destroy`** (`core/Engine.cpp::Engine::~Engine()` deletes instances;
+  `internal.integration.unregister` drops `agentState`) → neither kind of `stop` runs. Whether sw.sword destroys the
+  brain on mission change: sw.sword side (see below).
+- Order in a tick: `spark.action` `stop` (deselect, in TriggerSelectedActions) before `startStopAction` `stop`s (end of that phase).
+- directai THEMES candidates for step 14: fix the "previously selected instances get a boost" gotcha (boost = 1.0 by
+  default); add "refilled every tick, only `select` nodes consume, capacity 1 default, no diagnostic for unacquired";
+  add "brain destruction calls no deselect/stop"; add the `spark.action` select/deselect generation anchor.
+
+### sw.sword: integration → kernel actions (sw-sword-navigator, sw.sword master @ 51bdc0ec9e; anchors spot-checked)
+Paths: `int/` = `data/app-data/resources/integration/`, `DEC/` = `src/libraries/simulation/Decision/`, `sim/` = `src/libraries/simulation/`.
+- The traced calls:
+  - `int/EquipmentIntegration.lua::integration.startActionChangeEquipmentActivation = DEC_ChangeEquipmentActivation`
+    (alias) → `StartAction< PHY_ActionChangeEquipmentActivation >`: **async, returns id**, no callback. Applied once
+    (`changeDone_`); `Stop` does nothing → **stopping it does not undo the change** (DeactivateEquipment starts the opposite action).
+  - `int/SimulationIntegration.lua::integration.stopAction = function( actionID, entity )` → `_DEC__StopAction`.
+  - `integration.startDeploy` → `_DEC_Agent_Deploy( myself )`: **not a kernel action** (deployment role progresses,
+    poll `integration.isDeployed`; undo with `integration.undeploy`).
+  - `integration.activateAirFiltrationSystem` → `DEC_ActivateAirFiltrationSystem( agent, true )`: instantaneous.
+  - `int/ActivableIntegration.lua::integration.activateIt` → `DEC_ActivateObject` + report: instantaneous, boolean.
+  - `int/RemovableIntegration.lua::integration.startRemoveIt` → `_DEC_StartDetruireObjet` (single underscore): async,
+    **id stored in `object[myself].actionRemove`, returns nil**, registers `actionCallbacks[id]`; `updateRemoveIt` polls
+    `actionRemoveState`; `stopRemoveIt` → `DEC__StopAction` wrapper (`int/DECFunctionWrappers.lua`).
+- Lifecycle: `DEC/DEC_ActionFunctions.h::StartAction` → `RegisterAction` returns the id; every tick `PHY_Actor::UpdateActions`.
+  Push: only `PHY_DecisionCallbackAction_ABC` actions call `CallbackAction( id, value )` →
+  `int/SimulationIntegration.lua::CallbackAction = function` → `actionCallbacks[id]` (enums in `int/Types.lua`);
+  knowledge results via `KnowledgeCallbackAction`. Pull: `_DEC_EtatAction` → eError 0 / eDone 1 / eRunning 2.
+  **Callback sent from the action constructor is lost** (`PHY_ActionDestroyObject` constructor `Callback(
+  role_.GetInitialReturnCode() )` runs before `actionCallbacks[id]` is set).
+- `DEC/DEC_ActionFunctions.cpp::unsigned int StopAction( MIL_Entity_ABC& caller` **always returns 0** (truthy in Lua);
+  id 0 / unknown id = no-op. Callback actions send a final callback on `Stop` and clear `actionCallbacks[id]` (`RemoveAction`).
+- **Kernel never stops actions on mission replacement or task stop** (`sim/Entities/Orders/MIL_OrderManager_ABC.cpp::ReplaceMission`,
+  `DEC_Decision.h::StopMission` only calls Lua stop events). `CancelAllActions` only on death, `end_mission` magic
+  action (`MIL_AgentPion.cpp::CancelCurrentMission`, automat/crowd `OnReceiveEndMission`), deletion, brain reload,
+  pion Lua crash (`DEC_RolePion_Decision.cpp::EndCleanStateAfterCrash`). A started action keeps getting `Update()`
+  until then → the Lua stop handlers (`spark.action` `stop`, `startStopAction` `stop`, `deselect`/`destroy`) are the only
+  cleanup on mission change; they run then because the brain is kept and the old task's skills lose activation
+  (combine with directai above; the brain-kept part is inferred, not traced). Brain reload destroys the brain (no Lua
+  stop) but also cancels all kernel actions.
+- **sw.sword THEMES anchor is wrong** (step 14): row "Async actions" cites `sim/ActionManager.cpp`, which registers client
+  orders/magic actions (`ActionManager::Register( uint32_t client, const sword::Action& msg )`, verified). Replace with
+  `sim/Entities/Actions/PHY_Actor.cpp`, `PHY_Action_ABC.h`, `PHY_DecisionCallbackAction_ABC.cpp`,
+  `DEC/DEC_ActionFunctions.h::StartAction`; add `int/DECFunctionWrappers.lua`. Plus gotchas: no cancel on mission
+  change; stop doesn't undo equipment activation; lost constructor callback; starters not all named `*Start*`.
+
+### Decisions for the generator (step 12)
+- **Kernel starter allow-list from C++, not a name regex**: names registered to `StartAction<` (or a lambda/function
+  returning it) in `DEC/DEC_ActionFunctions.cpp` (name may be on the next line, e.g. `_DEC_StartTirIndirectSurPosition`),
+  `DEC/DEC_TaskGroupFunctions.cpp`, plus `DEC_ActivateProtection`, `DEC_DeactivateProtection`, `DEC_Agent_StartRefloat`
+  (`DEC/DEC_AgentFunctions.cpp`). A name regex gets false positives (`DEC_StartFragOrder`, `_DEC_StartHidingInCrowd`,
+  `_DEC_Geometrie_StartCalcul*`, deprecated `_DEC__StartControlerZone`, `_DEC__StartOccuperObjet` returns 0) and misses
+  (`DEC_ChangeEquipmentActivation`, `DEC_EquipmentTransport_Load/Unload`, `_DEC_ReparerBlocUrbain`, …).
+  → read with `--sword` (as the ontology index); without it, the kernel column is empty and the header says so.
+- Integration definitions in `int/*.lua` (about 1221 functions + 396 aliases on master):
+  - function: `^(integration(?:\.\w+)+)\s*=\s*function\b` (body to the next `^end\b` unless the line ends with `end`)
+  - `^function\s+(integration(?:\.\w+)+)\s*\(` (2 only)
+  - alias: `^(integration(?:\.\w+)+)\s*=\s*([A-Za-z_][\w.]*)\s*(--.*)?$` (target = kernel fn, `integration.*` or a Lua global)
+  - `= spark\.startStopAction\b` (table up to `\}\s*\)`)
+  - kernel token `\b_{0,2}DEC_\w+\b`, checked against the allow-list
+  - resolve one level of global wrappers (`int/DECFunctionWrappers.lua`, shapes `^(?:local\s+)?function\s+(\w+)\s*\(`
+    and `^(?:local\s+)?(\w+)\s*=\s*function\b`), file-local helpers (`SealableIntegration.lua::local startedSealOffLocation`),
+    and the closure over `integration.X` → `integration.Y`.
+  - expect about 96 integration names reaching a starter (75 direct, 21 indirect, e.g. `moveToItGeneric`); the
+    navigator's counts come from a rough scan, so the generator's own count is the reference.
+  - flag `update*` functions that (re)start actions (`updateMoveToIt`, `updateAttackingIt`, `updateDemonstrate`) and
+    start functions that return nil and keep the id in object state.
+- Model side (`dia5/`): per skill, the Lua callbacks present (`create activate select deselect destroy`, `spark.action`
+  `start started stop`), `acquire` variables vs XML `<resources>`, `:method(` names, direct `integration.*` calls.
+  World methods: reuse the step-9 scanner (`lua_class_methods`), mark `startStopAction` methods with their handler set
+  and per-handler integration calls; method → integration closure over world methods by name (depth-limited, at least
+  2: MoveTo → moveTo → reachIt), so skill → kernel is an **upper bound** (20 names are ssa in one class, plain in another).
+- Pattern per skill (may be several): `spark.action` · `startStopAction` (via methods) · hand-written
+  `select`+`deselect`/`destroy` · instantaneous (`select` without the above) · `activate`-only (consumes no resource).
+- Sections:
+  - resources: name · file · acquired by · declared-only by · capacity (1, unless a role `initial-capacity` or
+    `spark.setResourceCapacity` is found: the generator greps both)
+  - skills = every `skills/actions/` skill ∪ every skill with `<resources>`: name · body type · resources · feedbacks ·
+    pattern · ssa methods · integration · kernel starters
+  - `startStopAction` methods: class · method · handlers · integration per handler · kernel · callers by name
+  - integration → kernel table for the integration names the models reach
+  - anomalies: declared-not-acquired (8); `activate`-only nodes with `acquire`; ssa method without `started` used in a
+    condition (`if … :m(` → never true); `spark.action` whose `start` reaches a kernel starter but has no `stop`; ssa
+    names never called (6)
+- Count check for step 12 (UA_Demo): 134 action skills + 13 other resource skills = 147 skill rows; 25 resources;
+  166 ssa definitions / 126 names; 7 `spark.action` skills.
+
+### Gotcha candidates (step 13)
+`startStopAction` deprecated (LDoc only) and must be called every tick; without `started` it returns nothing; one
+action per (object, args) shared across skills, not per node; resources have capacity 1, are re-arbitrated each tick,
+ties are arbitrary and the holder gets no boost; only `select` nodes consume; an XML-declared, unacquired resource gives
+no diagnostic; `_DEC__StopAction` returns 0; the kernel does not cancel actions on mission change (Lua stop handlers
+are the only cleanup; brain reload or crash cancel all); stopping an equipment activation doesn't undo it;
+`startDeploy` isn't a kernel action; ids may live in object state (`startRemoveIt` returns nil); the first callback
+can be lost.

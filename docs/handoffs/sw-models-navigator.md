@@ -232,7 +232,7 @@ _(filled in at step 1; a resumed session must not ask again)_
   - *Done when:* the result is logged and the checker passes.
 
 ### Phase C — action skills and resources
-- [ ] **11. Survey: the action stack.**
+- [x] **11. Survey: the action stack.**
   - Trace 2–3 real examples end to end: skill XML (resources, feedbacks) → Lua framework → `integration.*` → kernel `_DEC__Start*` → callback.
   - Use one `startStopAction` on `MeKnowledge`, one `skills/actions/` skill, and one `spark.action` if any exists.
   - Ask `dai-navigator` how resources are arbitrated.
@@ -329,4 +329,9 @@ _(one entry per finished step: date, step, what was produced, what the next step
   12 tool calls; 13 interfaces analysed, 4 flagged (NonTeammate/Teammate route, ThreateningUnit, crowd Destination).
   Citations checked: NonTeammate/Teammate extends, Object 11 implements, Position→ThreateningUnit, changelog:204.
   Checker 683 refs, 0 problems; 3 client branches 0 problems.
-
+- 2026-11-05, step 11: `_build_notes.md` § C, read on sw.models **`UA_Demo` @ `99916c753a`** (checkout moved). 134 action
+  skills + 13 other skills with `<resources>` (index must cover both), 25 resources (capacity 1, re-arbitrated each tick,
+  ties arbitrary), 8 skills declare a resource they never acquire (no diagnostic). Patterns: `spark.action` 7 skills,
+  `startStopAction` 166 defs / 126 names in 23 world files (also a "do once" idiom, e.g. `displayReportOnce`),
+  hand-written select+deselect 10, instantaneous. Answers from both navigators verified; kernel starters need a C++
+  allow-list (`StartAction<`), not a name regex. Step 14: sw.sword THEMES "Async actions" anchor `sim/ActionManager.cpp` is wrong.
