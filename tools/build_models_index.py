@@ -10,7 +10,10 @@ Outputs (in <out dir>):
   ontology_index.md    world classes, methods (declared / implemented / callers by name), interfaces and their
                        implementers, task-metadata classes, roles and the ontology type map, anomaly report
                        (reads sw.sword integration Lua and DEC_Decision.cpp when --sword exists)
-  action_index.md      (phase C, not yet implemented)
+  action_index.md      resources and who acquires them, action skills (and every skill with <resources>) with their
+                       pattern (spark.action / startStopAction / hand-written / instantaneous), spark.startStopAction
+                       world methods and their handlers, integration functions that start kernel actions, anomalies
+                       (reads sw.sword integration Lua and the C++ StartAction< registrations when --sword exists)
 
 Each output header records the repo branch and commit it was built from.
 """
@@ -565,25 +568,27 @@ METHOD_CALL = re.compile(r":\s*([A-Za-z_]\w*)\s*[\(\{\"]")
 LUA_SPECIAL = {"__init", "__call", "__daihash", "__decode", "__eq", "__encode", "__gc", "__le", "__lt", "__tostring"}
 
 
-def lua_class_methods(src):
-    """Methods of a class .lua: keys assigned at brace depth 1 (`return { m = … }`) or `X.m = …` at depth 0, outside any
-    function / control block and outside call parentheses. Returns {name: form}."""
-    keys = {}
+def lua_top_keys(text):
+    """Keys of a Lua table body, on text already passed through blank_lua: keys assigned at brace depth 1
+    (`return { m = … }`, or a table text starting at its `{`) or `X.m = …` at depth 0, outside any function / control
+    block and outside call parentheses. Returns [(name, form, value start, span end)]; a key's span ends where the
+    next key starts (or at the end of the text)."""
+    found = []
     brace = paren = pend_do = 0
     blocks = []
-    for m in LUA_TOK.finditer(blank_lua(src)):
+    for m in LUA_TOK.finditer(text):
         t = m.group(0)
         if t[-1] == "=" and (t[0].isalpha() or t[0] == "_"):
             lhs = re.sub(r"\s", "", t[:-1])
             if not blocks and not paren:
-                rhs = m.string[m.end():m.end() + 40].lstrip()
+                rhs = text[m.end():m.end() + 40].lstrip()
                 form = ("function" if rhs.startswith("function") else
                         "startStopAction" if rhs.startswith("spark.startStopAction") else
                         "spark.action" if rhs.startswith("spark.action") else "alias")
                 if brace == 1 and "." not in lhs:
-                    keys.setdefault(lhs, form)
+                    found.append([lhs, form, m.end()])
                 elif brace == 0 and lhs.count(".") == 1:
-                    keys.setdefault(lhs.split(".")[1], form)
+                    found.append([lhs.split(".")[1], form, m.end()])
             continue
         if t == "{":
             brace += 1
@@ -605,6 +610,16 @@ def lua_class_methods(src):
                 blocks.append("do")
         elif t in ("end", "until") and blocks:
             blocks.pop()
+    for i, k in enumerate(found):
+        k.append(found[i + 1][2] if i + 1 < len(found) else len(text))
+    return [tuple(k) for k in found]
+
+
+def lua_class_methods(src):
+    """Methods of a class .lua (see lua_top_keys). Returns {name: form}."""
+    keys = {}
+    for name, form, _, _ in lua_top_keys(blank_lua(src)):
+        keys.setdefault(name, form)
     return keys
 
 
@@ -995,6 +1010,475 @@ def build_ontology(repo, model, out, sword):
             "rule violations": len(viol), "never called": len(nev)}
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# actions: resources, action skills, Lua action frameworks, kernel action starters
+
+KERNEL_TOKEN = re.compile(r"\b_{0,2}DEC_\w+\b")
+MODEL_INTEG = re.compile(r"\bintegration\.([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)")
+CPP_DEF = re.compile(r"(?m)^[A-Za-z_][\w:<>,\s\*&]*?\b(\w+)\s*\(")
+LUA_DEF = re.compile(r"^(local\s+)?(?:function\s+([\w.]+)\s*\(|([\w.]+)\s*=\s*(function\b|spark\.startStopAction\b|"
+                     r"[A-Za-z_][\w.]*[ \t]*$))", re.M)
+LIFECYCLE = ("create", "activate", "deactivate", "select", "deselect", "destroy", "start", "started", "stop")
+ONCE_IDIOM = re.compile(r"Once")  # displayReportOnce, sendDynamicMessageOnce…: startStopAction used as "do once while called"
+
+
+def strip_cpp(t):
+    out, i, n = [], 0, len(t)
+    while i < n:
+        if t.startswith("//", i):
+            j = t.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if t.startswith("/*", i):
+            j = t.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+            continue
+        c = t[i]
+        if c in "\"'":
+            j = i + 1
+            while j < n and t[j] != c and t[j] != "\n":
+                j += 2 if t[j] == "\\" else 1
+            out.append(t[i:j + 1])
+            i = j + 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def match_close(text, i, open_="(", close=")"):
+    """Index of the bracket closing the one at text[i]."""
+    d = 0
+    for j in range(i, len(text)):
+        if text[j] == open_:
+            d += 1
+        elif text[j] == close:
+            d -= 1
+            if d == 0:
+                return j
+    return len(text)
+
+
+def kernel_starters(sword):
+    """Brain function names that start a kernel action: RegisterFunction statements whose text calls StartAction<, or
+    that register a C++ function whose body calls it. Returns {name: 'File.cpp' or 'File.cpp via Func'}."""
+    sim = os.path.join(sword, "src", "libraries", "simulation")
+    files = {}
+    for r, _, fs in os.walk(sim):
+        for f in fs:
+            if f.endswith(".cpp"):
+                files[f] = files.get(f, "") + strip_cpp(read(os.path.join(r, f)))
+    funcs = set()
+    for t in files.values():
+        for m in re.finditer(r"\bStartAction\s*<", t):
+            defs = list(CPP_DEF.finditer(t, 0, m.start()))
+            if defs:
+                funcs.add(defs[-1].group(1))
+    funcs.discard("Register")
+    names = {}
+    for f, t in files.items():
+        for m in re.finditer(r"\bRegister(?:Function|Method)\s*(?:<[^()]*?>\s*)?\(", t):
+            stmt = t[m.end() - 1:match_close(t, m.end() - 1)]
+            n = re.search(r'"(\w+)"', stmt)
+            if not n:
+                continue
+            if re.search(r"\bStartAction\s*<", stmt):
+                names[n.group(1)] = f
+            else:
+                via = [r for r in re.findall(r"&\s*(?:\w+::)*(\w+)", stmt) if r in funcs]
+                if via:
+                    names[n.group(1)] = f"{f} via {via[0]}"
+    return names
+
+
+def scan_integration_defs(sword):
+    """integration.* definitions and Lua helpers in sw.sword integration Lua.
+    Returns (defs {name without 'integration.': (file, kind, body)}, helpers {name: [(file, local?, body)]})."""
+    res_dir = os.path.join(sword, "data", "app-data", "resources")
+    paths = [os.path.join(res_dir, "Integration.lua")]
+    idir = os.path.join(res_dir, "integration")
+    paths += [os.path.join(idir, f) for f in sorted(os.listdir(idir)) if f.endswith(".lua")] if os.path.isdir(idir) else []
+    defs, helpers = {}, defaultdict(list)
+    for p in paths:
+        if not os.path.isfile(p):
+            continue
+        label = os.path.relpath(p, res_dir).replace("\\", "/")
+        t = blank_lua(read(p))
+        for m in LUA_DEF.finditer(t):
+            name = m.group(2) or m.group(3)
+            rhs = m.group(4) or "function"
+            if rhs.startswith("spark.startStopAction"):
+                i = t.find("(", m.start(4))
+                body, kind = t[m.end():match_close(t, i) + 1], "startStopAction"
+            elif rhs == "function":
+                line_end = t.find("\n", m.end())
+                line_end = len(t) if line_end < 0 else line_end
+                if re.search(r"\bend\s*,?\s*$", t[m.end():line_end]):
+                    body = t[m.end():line_end]
+                else:
+                    e = re.compile(r"^end\b", re.M).search(t, m.end())
+                    body = t[m.end():e.end() if e else len(t)]
+                kind = "function"
+            else:
+                body, kind = rhs.strip(), "alias"
+            if name.startswith("integration."):
+                defs.setdefault(name[len("integration."):], (label, kind, body))
+            elif "." not in name:
+                helpers[name].append((label, bool(m.group(1)), body))
+    return defs, helpers
+
+
+def build_actions(repo, model, out, sword):
+    dia5 = os.path.join(repo, "data", "data", "models", model, "decisional", "dia5")
+    if not os.path.isdir(dia5):
+        sys.exit(f"{dia5}: not found")
+    ents = scan_decisional(dia5)
+    rel = lambda e: os.path.relpath(e.path, dia5).replace("\\", "/")
+
+    # --- sw.sword side: kernel starters and integration closure
+    have_sword = bool(sword) and os.path.isdir(os.path.join(sword, "src", "libraries", "simulation"))
+    starters = kernel_starters(sword) if have_sword else {}
+    idefs, helpers = scan_integration_defs(sword) if have_sword else ({}, {})
+
+    def resolve_integ(name):
+        parts = name.split(".")
+        while parts:
+            n = ".".join(parts)
+            if n in idefs:
+                return n
+            parts.pop()
+        return None
+
+    memo = {}
+
+    def starters_of(key, body, file, stack=()):
+        """Kernel starters reachable from a Lua body: kernel tokens, helper calls, integration.* refs."""
+        if key in memo:
+            return memo[key]
+        if key in stack:
+            return set()
+        stack = stack + (key,)
+        found = set()
+        for tok in set(KERNEL_TOKEN.findall(body)):
+            if tok in starters:
+                found.add(tok)
+            elif tok in helpers:
+                for f, _, b in helpers[tok]:
+                    if b.strip() != tok:
+                        found |= starters_of(("h", tok, f), b, f, stack)
+        for call in set(re.findall(r"(?<![.:\w])([A-Za-z_]\w*)\s*\(", body)):
+            if call in helpers and not KERNEL_TOKEN.fullmatch(call):
+                for f, local, b in helpers[call]:
+                    if not local or f == file:
+                        found |= starters_of(("h", call, f), b, f, stack)
+        for ref in set(MODEL_INTEG.findall(body)):
+            r = resolve_integ(ref)
+            if r:
+                f, _, b = idefs[r]
+                found |= starters_of(("i", r), b, f, stack)
+        memo[key] = found
+        return found
+
+    integ_starters = {n: starters_of(("i", n), b, f) for n, (f, _, b) in idefs.items()}
+    integ_direct = {n: {t for t in KERNEL_TOKEN.findall(b) if t in starters} for n, (f, _, b) in idefs.items()}
+
+    def integ_names(text):
+        outn = set()
+        for ref in MODEL_INTEG.findall(text):
+            if ref.startswith("ontology."):
+                continue
+            outn.add(resolve_integ(ref) or ref)
+        return outn
+
+    def kernel_of(inames):
+        return set().union(*(integ_starters.get(n, set()) for n in inames)) if inames else set()
+
+    # --- world classes: methods with bodies, startStopAction handlers
+    classes = {n: e for n, e in ents.items() if e.kind == "class"}
+    parent = {n: (XML_REFS["extends"].findall(XML_COMMENT.sub("", e.text)) or [None])[0] for n, e in classes.items()}
+
+    def root_of(n):
+        seen = set()
+        while n in classes and n not in seen:
+            seen.add(n)
+            n = parent[n]
+        return n
+
+    world = {n: e for n, e in classes.items() if root_of(n) != "sparkle.TaskMetadata"}
+    wm = defaultdict(list)  # method -> [dict]
+    for n, e in sorted(world.items()):
+        if not e.lua:
+            continue
+        t = blank_lua(read(e.path[:-4] + ".lua"))
+        for name, form, vs, end in lua_top_keys(t):
+            if name in LUA_SPECIAL:
+                continue
+            body = t[vs:end]
+            d = {"cls": n, "form": form, "integ": integ_names(body), "calls": set(METHOD_CALL.findall(body)),
+                 "handlers": {}}
+            if form == "startStopAction":
+                b = body.find("{")
+                tbl = body[b:match_close(body, b, "{", "}") + 1] if b >= 0 else ""
+                for h, _, hs, he in lua_top_keys(tbl):
+                    if h in ("start", "started", "stop"):
+                        d["handlers"][h] = integ_names(tbl[hs:he])
+            wm[name].append(d)
+
+    def is_ssa(m):
+        return any(d["form"] == "startStopAction" for d in wm.get(m, []))
+
+    cmemo = {}
+
+    def method_closure(m, depth=2):
+        """(integration names, startStopAction method names) reachable from method name m, by name (upper bound)."""
+        k = (m, depth)
+        if k in cmemo:
+            return cmemo[k]
+        cmemo[k] = (set(), set())
+        integ, ssa = set(), set()
+        for d in wm.get(m, []):
+            integ |= d["integ"]
+            if d["form"] == "startStopAction":
+                ssa.add(m)
+            if depth > 0:
+                for c in d["calls"]:
+                    if c != m and c in wm:
+                        i2, s2 = method_closure(c, depth - 1)
+                        integ |= i2
+                        ssa |= s2
+        cmemo[k] = (integ, ssa)
+        return cmemo[k]
+
+    # --- skills
+    skills = {n: e for n, e in ents.items() if e.kind == "skill"}
+    resources = {n: e for n, e in ents.items() if e.kind == "resource"}
+    rows = {}
+    for n, e in sorted(skills.items()):
+        body = XML_COMMENT.sub("", e.text)
+        rs = re.search(r"<resources>(.*?)</resources>", body, re.S)
+        res = re.findall(r'<resource\s[^>]*?name="([^"]+)"\s+variable="([^"]+)"', rs.group(1)) if rs else []
+        is_action = "/skills/actions/" in rel(e)
+        if not (is_action or res):
+            continue
+        L = blank_lua(read(e.path[:-4] + ".lua")) if e.lua else ""
+        nodes = []  # (wrapped by spark.action, {key: span text})
+        for nm in re.finditer(r"\b(?:rootnode|node\s*\"\")\s*\)?\s*\{", L):
+            b = nm.end() - 1
+            tbl = L[b:match_close(L, b, "{", "}") + 1]
+            wrapped = bool(re.search(r"\bspark\.action\s*\(\s*$", L[max(0, nm.start() - 40):nm.start()]))
+            nodes.append((wrapped, {k: tbl[vs:ve] for k, _, vs, ve in lua_top_keys(tbl)}))
+        node = bool(nodes)
+        kd = {}
+        for _, keys in nodes:
+            for k, v in keys.items():
+                kd[k] = kd.get(k, "") + v
+        acquired = set(re.findall(r"skill\.resources\.(\w+)", kd.get("acquire", "")))
+        spark_action = any(wr for wr, _ in nodes)
+        idle_acquire = any("acquire" in k and "select" not in k and not wr for wr, k in nodes)
+        callbacks = [k for k in LIFECYCLE if k in kd]
+        calls = {c for c in METHOD_CALL.findall(L) if c in wm}
+        direct_integ = integ_names(L)
+        integ, ssa = set(direct_integ), set()
+        for c in calls:
+            i2, s2 = method_closure(c)
+            integ |= i2
+            ssa |= s2
+        ssa_direct = {c for c in calls if is_ssa(c) and not ONCE_IDIOM.search(c)}
+        ssa_all = {s for s in ssa if not ONCE_IDIOM.search(s)}
+        pattern = []
+        if spark_action:
+            pattern.append("spark.action")
+        if ssa_direct:
+            pattern.append("startStopAction")
+        elif ssa_all:
+            pattern.append("startStopAction (deeper)")
+        if not spark_action and ("deselect" in kd or "destroy" in kd):
+            pattern.append("select+deselect/destroy")
+        if not spark_action and "activate" in kd and "select" not in kd:
+            pattern.append("activate-only")
+        if not pattern:
+            pattern.append("instantaneous" if "select" in kd else "no node" if not node else
+                           "create-only" if callbacks == ["create"] else "other")
+        start_k = kernel_of(integ_names(kd["start"])) if spark_action and "start" in kd else set()
+        rows[n] = {"e": e, "action": is_action, "res": res, "acquired": acquired, "fb": FEEDBACK.findall(body),
+                   "bt": (BODY_TYPE.findall(body) or [""])[0], "callbacks": callbacks, "pattern": pattern,
+                   "ssa_direct": ssa_direct, "ssa_all": ssa_all, "direct_integ": direct_integ,
+                   "kernel_direct": kernel_of(direct_integ) | set().union(
+                       *(kernel_of(method_closure(c, 0)[0]) for c in calls)) if calls else kernel_of(direct_integ),
+                   "kernel": kernel_of(integ), "spark_action": spark_action, "has_stop": "stop" in kd,
+                   "start_kernel": start_k, "node": node, "idle_acquire": idle_acquire, "nodes": len(nodes)}
+
+    res_acq = defaultdict(set)
+    res_decl_only = defaultdict(set)
+    for n, r in rows.items():
+        for rn, var in r["res"]:
+            (res_acq if var in r["acquired"] else res_decl_only)[rn].add(n)
+
+    # --- callers of startStopAction methods, conditions using them, capacity overrides
+    ssa_callers = defaultdict(set)
+    cond_uses = defaultdict(set)
+    capacity_hits = []
+    by_path = {os.path.normcase(e.path[:-4] + ".lua"): e.name for e in ents.values() if e.lua}
+    model_integ_users = defaultdict(set)
+    for root_, _, fs in os.walk(dia5):
+        for f in fs:
+            p = os.path.join(root_, f)
+            if f.endswith(".xml") and "initial-capacity" in read(p):
+                capacity_hits.append(os.path.relpath(p, dia5).replace("\\", "/"))
+            if not f.endswith(".lua"):
+                continue
+            label = by_path.get(os.path.normcase(p), os.path.relpath(p, dia5).replace("\\", "/"))
+            t = blank_lua(read(p))
+            if "setResourceCapacity" in t:
+                capacity_hits.append(label)
+            for c in set(METHOD_CALL.findall(t)):
+                if is_ssa(c):
+                    ssa_callers[c].add(label)
+            for cond in re.findall(r"\b(?:if|elseif|while)\b(.*?)\b(?:then|do)\b", t):
+                for c in METHOD_CALL.findall(cond):
+                    if c in wm and all(d["form"] == "startStopAction" and "started" not in d["handlers"]
+                                       for d in wm[c]):
+                        cond_uses[c].add(label)
+            for i in integ_names(t):
+                model_integ_users[i].add(label)
+
+    # --- header
+    branch, head, date = repo_stamp(repo)
+    dirty = git(repo, "status", "--porcelain", "--", f"data/data/models/{model}")
+    L = []
+    w = L.append
+    w("# sw.models action index (generated)\n")
+    w(f"Generated by `forge/tools/build_models_index.py` from sw.models **`{branch}` @ `{head}`** ({date}), model "
+      f"`{model}`{' — **working tree had uncommitted changes in this model**' if dirty and dirty != '?' else ''}. "
+      f"Built {datetime.date.today()}." + (
+          " Kernel side (integration Lua, `StartAction<` registrations) read from sw.sword **`%s` @ `%s`** (%s).\n"
+          % repo_stamp(sword) if have_sword else
+          " **sw.sword not found: integration definitions and kernel starters are missing.**\n"))
+    w("**Stale check:** if `git -C C:/MASARepo/sw.models rev-parse --short=10 HEAD` differs from the commit above, "
+      "treat this file as a hint only and confirm with grep. **Grep this file, never read it whole.**\n")
+    w("**Upper bounds.** A Lua call `x:m(` is resolved by method name to every world class defining `m`, two calls deep "
+      "(skill → `meKnowledge:moveTo` → `destination:reachIt`), so \"via methods\" columns can list integration "
+      "functions and kernel starters that a given skill never reaches. Direct columns (the skill's own Lua) are exact.\n")
+    w("**Kernel starters** = brain functions registered (sw.sword `src/libraries/simulation`) with a statement that calls "
+      "`StartAction<`, or with a C++ function whose body does. Not every `*Start*` name is one (`DEC_StartFragOrder`) "
+      "and some have no `Start` (`DEC_ChangeEquipmentActivation`). An integration function reaches a starter through its "
+      "body, Lua helpers (`DECFunctionWrappers.lua`, file locals) and other `integration.*` functions.\n")
+    w("**Patterns** (a skill may show several): `spark.action` (node with start / started / stop) · `startStopAction` "
+      "(calls a world method built with `spark.startStopAction`; `(deeper)` = only through another method; the "
+      "`*Once*` report/message helpers are ignored) · `select+deselect/destroy` (hand-written stop in `deselect` / "
+      "`destroy`) · `activate-only` (no `select`: consumes no resource) · `instantaneous` (`select` only). Semantics: "
+      "THEMES \"Resources & actions\".\n")
+
+    n_action = sum(1 for r in rows.values() if r["action"])
+    n_ssa = sum(1 for v in wm.values() for d in v if d["form"] == "startStopAction")
+    n_ssa_names = sum(1 for v in wm.values() if any(d["form"] == "startStopAction" for d in v))
+    pat = Counter(p for r in rows.values() for p in r["pattern"])
+    w("## Counts\n")
+    w("| Item | Count |\n|---|---|")
+    w(f"| resources | {len(resources)} |\n| action skills (`*/skills/actions/`) | {n_action} |\n"
+      f"| other skills with `<resources>` | {len(rows) - n_action} |\n"
+      f"| `startStopAction` world methods (definitions / names) | {n_ssa} / {n_ssa_names} |\n"
+      f"| kernel action starters (sw.sword) | {len(starters)} |\n"
+      f"| integration functions reaching a starter | {sum(1 for v in integ_starters.values() if v)} |")
+    for p, c in sorted(pat.items()):
+        w(f"| pattern `{p}` | {c} |")
+    w("")
+
+    # --- 1. resources
+    w("## 1. Resources\n")
+    w("Capacity: 1 for every resource (directai default), unless a role `<resource initial-capacity>` or "
+      "`spark.setResourceCapacity` changes it. Found in this model: " +
+      (code(capacity_hits) if capacity_hits else "**none**, so every resource is held by one skill at a time") +
+      ". Skills acquiring the same resource cannot run (be selected) at the same time on one agent; the winner is "
+      "re-decided each tick by activity.\n")
+    w("| Resource | File | Acquired by (Lua `acquire`) | Declared in XML only |\n|---|---|---|---|")
+    for n, e in sorted(resources.items()):
+        w(f"| `{n}` | `{rel(e)}` | {code(res_acq[n]) or '—'} | {code(res_decl_only[n]) or '—'} |")
+    w("")
+
+    # --- 2. skills
+    w("## 2. Action skills and skills with resources\n")
+    w("Kind: `action` = under `*/skills/actions/`, `res` = elsewhere but declares `<resources>`. Resources: variable "
+      "names, *italic* = declared in XML, never acquired. Callbacks: keys present in any node of the skill (`rootnode` and "
+      "`node \"…\"`; the node count when more than one). startStopAction: world methods "
+      "called directly (deeper ones in parentheses). Kernel: starters via the skill's own integration calls and the "
+      "methods it calls directly; \"+ deeper\" = more via 2-level method resolution.\n")
+    w("| Skill | Kind | Body type | Resources | Feedbacks | Pattern | Callbacks | startStopAction | Integration (own Lua) "
+      "| Kernel starters |\n|---|---|---|---|---|---|---|---|---|---|")
+    for n, r in sorted(rows.items()):
+        resv = ", ".join(f"`{v}`" if v in r["acquired"] else f"*`{v}`*" for _, v in r["res"]) or "—"
+        deeper = sorted(r["ssa_all"] - r["ssa_direct"])
+        ssa_txt = (code(r["ssa_direct"], 8) or "—") + (f" ({code(deeper, 5)})" if deeper else "")
+        kd = r["kernel_direct"]
+        more = r["kernel"] - kd
+        k_txt = (code(kd, 6) or "—") + (f" + deeper {code(more, 4)}" if more else "")
+        nodes_txt = f" ({r['nodes']} nodes)" if r["nodes"] > 1 else ""
+        w(f"| `{n}` | {'action' if r['action'] else 'res'} | `{r['bt'].split('.')[-1] or '—'}` | {resv} | "
+          f"{', '.join(r['fb']) or '—'} | {' · '.join(r['pattern'])} | {' '.join(r['callbacks']) or '—'}{nodes_txt} | {ssa_txt} | "
+          f"{code(r['direct_integ'], 8) or '—'} | {k_txt} |")
+    w("")
+
+    # --- 3. startStopAction methods
+    w("## 3. `spark.startStopAction` world methods\n")
+    w("Handlers present and the integration functions each calls (`started` may be a bare `integration.X`). Kernel = "
+      "starters reached from the handlers. Callers = model Lua calling `:m(` (by name: upper bound; a name defined as a "
+      "plain function in another class gets the same callers). `*Once*` = the \"do once while called\" idiom.\n")
+    w("| Class | Method | start | started | stop | Kernel starters | Callers |\n|---|---|---|---|---|---|---|")
+    for m in sorted(wm):
+        for d in wm[m]:
+            if d["form"] != "startStopAction":
+                continue
+            h = d["handlers"]
+            cell = lambda k: (code(h[k], 5) or "(Lua only)") if k in h else "—"
+            kern = kernel_of(set().union(*h.values())) if h else set()
+            plain = [x["cls"] for x in wm[m] if x["form"] != "startStopAction"]
+            w(f"| `{d['cls']}` | `{m}`{' (also plain in ' + code(plain, 3) + ')' if plain else ''} | {cell('start')} | "
+              f"{cell('started')} | {cell('stop')} | {code(kern, 5) or '—'} | "
+              f"{len(ssa_callers[m])}: {code(ssa_callers[m], 6) or '—'} |")
+    w("")
+
+    # --- 4. integration -> kernel
+    w("## 4. Integration functions that start kernel actions (those the model calls)\n")
+    w("Direct = a starter token in the function's own body (or an alias of one); otherwise reached through helpers or "
+      "other `integration.*` functions. `update*` / `compute*` names that reach a starter (re)start an action when called.\n")
+    w("| integration | Defined in | Kind | Kernel starters | Direct? | Model users |\n|---|---|---|---|---|---|")
+    for i in sorted(model_integ_users):
+        if not integ_starters.get(i):
+            continue
+        f, kind, _ = idefs[i]
+        flag = " **(re)starts**" if re.match(r"(update|uptate|compute)", i.split(".")[-1]) else ""
+        w(f"| `integration.{i}`{flag} | `{f}` | {kind} | {code(integ_starters[i], 5)} | "
+          f"{'yes' if integ_direct[i] else 'via'} | {len(model_integ_users[i])}: {code(model_integ_users[i], 4)} |")
+    w("")
+
+    # --- 5. anomalies
+    w("## 5. Anomalies\n")
+    dno = sorted((n, v) for n, r in rows.items() for _, v in r["res"] if v not in r["acquired"])
+    w(f"### 5.1 Resource declared in XML, never acquired in Lua ({len(dno)})\n")
+    w("No directai diagnostic; the resource is still created. Often a parent whose child skill acquires it.\n")
+    w("\n".join(f"- `{n}`: `{v}`" for n, v in dno) + "\n")
+    nosel = sorted(n for n, r in rows.items() if r["idle_acquire"])
+    w(f"### 5.2 `acquire` on a node without `select` ({len(nosel)})\n")
+    w("Only selectable nodes consume resources, so this `acquire` does nothing.\n")
+    w(("\n".join(f"- `{n}`" for n in nosel) or "None.") + "\n")
+    w(f"### 5.3 startStopAction without `started` used as a condition ({len(cond_uses)})\n")
+    w("Every definition of the method lacks `started`, so the call returns nothing and the condition is never true.\n")
+    w(("\n".join(f"- `{m}` in {code(u, 6)}" for m, u in sorted(cond_uses.items())) or "None.") + "\n")
+    nostop = sorted(n for n, r in rows.items() if r["spark_action"] and r["start_kernel"] and not r["has_stop"])
+    w(f"### 5.4 `spark.action` whose `start` reaches a kernel starter but has no `stop` ({len(nostop)})\n")
+    w("The kernel does not stop actions on mission change; without `stop` the action keeps running.\n")
+    w(("\n".join(f"- `{n}`: {code(rows[n]['start_kernel'])}" for n in nostop) or "None.") + "\n")
+    never = sorted(m for m in wm if is_ssa(m) and not ssa_callers[m])
+    w(f"### 5.5 startStopAction methods never called as `:m(` in model Lua ({len(never)})\n")
+    w((code(never) or "None.") + "\n")
+
+    with open(os.path.join(out, "action_index.md"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(L))
+    return {"resources": len(resources), "action skills": n_action, "other resource skills": len(rows) - n_action,
+            "ssa defs/names": f"{n_ssa}/{n_ssa_names}", "spark.action": pat.get("spark.action", 0),
+            "kernel starters": len(starters), "integ->starter": sum(1 for v in integ_starters.values() if v)}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("repo")
@@ -1011,7 +1495,7 @@ def main():
     if "ontology" in only:
         print("ontology:", build_ontology(a.repo, a.model, a.out, a.sword if os.path.isdir(a.sword) else None))
     if "actions" in only:
-        print("actions: not implemented yet (phase C)")
+        print("actions:", build_actions(a.repo, a.model, a.out, a.sword if os.path.isdir(a.sword) else None))
 
 
 if __name__ == "__main__":

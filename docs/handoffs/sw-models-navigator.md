@@ -237,7 +237,7 @@ _(filled in at step 1; a resumed session must not ask again)_
   - Use one `startStopAction` on `MeKnowledge`, one `skills/actions/` skill, and one `spark.action` if any exists.
   - Ask `dai-navigator` how resources are arbitrated.
   - Output: `_build_notes.md` § C.
-- [ ] **12. Generator: action index.**
+- [x] **12. Generator: action index.**
   - Output `docs/sw.models/action_index.md`.
   - *Done when:*
     - every `skills/actions/` skill appears, with its framework
@@ -335,3 +335,10 @@ _(one entry per finished step: date, step, what was produced, what the next step
   `startStopAction` 166 defs / 126 names in 23 world files (also a "do once" idiom, e.g. `displayReportOnce`),
   hand-written select+deselect 10, instantaneous. Answers from both navigators verified; kernel starters need a C++
   allow-list (`StartAction<`), not a name regex. Step 14: sw.sword THEMES "Async actions" anchor `sim/ActionManager.cpp` is wrong.
+- 2026-11-05, step 12: `build_models_index.py --only actions` -> `docs/sw.models/action_index.md` (90 KB, ~5 s); all three
+  indexes regenerated on sw.models **`master` @ `d2f78fafcd`** (user switched back). 132 action skills + 13 other resource skills,
+  25 resources (each lists acquirers / declared-only), 165 `startStopAction` defs / 124 names (all with handlers), 6
+  `spark.action`; kernel starters = 72 names from C++ `StartAction<` registrations; 96 integration fns reach one. Skills
+  can hold several `node "…"` tables (scan all). Anomalies: 8 declared-not-acquired, 2 `acquire` on activate-only nodes
+  (navy AirDisembarkFromLandingShipDock, ParallelLoad), 6 startStopAction-without-`started` used in `if` - real bug:
+  `EquipWithNBCProtection` always sends `equipActionImpossible`. Shared Lua scanner refactored (`lua_top_keys`); ontology output unchanged.
