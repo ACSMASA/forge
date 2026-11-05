@@ -54,14 +54,16 @@ at sw.sword build time); no generator exists besides `tools/mission_scaffold.py`
   each type with its converter and Spark type.
 - **Binding is by name**: `dia-name` = the task `<parameter name>`; undeclared names are dropped:
   `spark/behavior.lua::res[ name ] = parameters[ name ]`.
-- **Absent optional value → `NIL`, not the `<default>`**: an optional parameter not given arrives as the `NIL`
-  sentinel (a shared global table, not nil): `sim/Decision/DEC_Decision.cpp::refMission_[ dianame ] = brain_.GetScriptRef( "NIL" );`,
-  `spark/compatibility.lua::setsharedglobal( "NIL"`. Spark applies `<default>` only to nil, so the default is
-  **skipped**: `spark/parameters.lua::if value == nil then`. Only a type with no converter (never stored) gets nil and
-  thus the default. Skills test `~= NIL` (and `~= nil`).
-- **optional ↔ nullable**: `optional="true"` needs `nullable="true"` on the task parameter (else a warning with
-  `--dec-typecheck`: `spark/parameters.lua::is not declared nullable but is set to NIL`); a `<default>` on it only
-  serves Lua starts that omit the key. `optional="false"` is enforced at order time (missing value, min/max-occurs, `IsOfType`, invalid geometry), by
+- **Absent optional value depends on the converter**. Scalar converters (Boolean, Integer, Numeric, Distance, Speed,
+  Enumeration, DateTime, String, ResourceType and their lists) always return true: the value stays **nil** and Spark
+  applies the task `<default>` (`spark/parameters.lua::if value == nil then`). Object converters (knowledge, Point,
+  Polygon, Path, LocationComposite…) return false: the sim stores the **`NIL` sentinel** (a shared global table, not
+  nil), so the `<default>` is **skipped**: `sim/Decision/DEC_Decision.cpp::refMission_[ dianame ] = brain_.GetScriptRef( "NIL" );`,
+  `sim/Decision/DEC_Decision.cpp::BoolFunction( refMission, name, element );`, `spark/compatibility.lua::setsharedglobal( "NIL"`.
+  Skills test `~= NIL` (and `~= nil`). `tools/missionlib.py` derives the two sets from the C++.
+- **optional ↔ nullable/default**: an optional object parameter needs `nullable="true"` on the task parameter (else a
+  warning with `--dec-typecheck`: `spark/parameters.lua::is not declared nullable but is set to NIL`); an optional
+  scalar needs a `<default>` (or `nullable`). `optional="false"` is enforced at order time (missing value, min/max-occurs, `IsOfType`, invalid geometry), by
   position after the context: `sim/Entities/Orders/MIL_Mission_ABC.cpp::IsOfType( parameterType.GetType().GetType() )`.
 - **Lists**: `max-occurs="unbounded"` (or > 1) makes a list; the task type must be a `<list>` of the element type.
 - **Hashability** matters for checkpoints: a skill keyed by a parameter of a class without `hash` cannot persist

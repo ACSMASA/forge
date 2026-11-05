@@ -119,8 +119,9 @@ Path aliases:
   - Extras are dropped (`spark/behavior.lua` schedule copies only the declared names).
   - A task parameter with no counterpart gets its `<default>`, otherwise nil.
   - Warnings only appear with `--dec-typecheck`.
-  - An absent optional parameter arrives as `NIL` (`DEC_Decision.cpp`), a shared sentinel table
-    (`spark/compatibility.lua`), so the task `<default>` is skipped (it applies to nil only).
+  - An absent optional **object** parameter arrives as `NIL` (`DEC_Decision.cpp`), a shared sentinel table
+    (`spark/compatibility.lua`), so the task `<default>` is skipped; an absent **scalar** (Boolean, numbers, String,
+    Enumeration…) stays nil and gets the `<default>` (its converter always returns true).
   - Order-time validation (`sim/Entities/Orders/MIL_Mission_ABC.cpp` `FillParameters`, by position after the
     context): missing non-optional, min/max-occurs, `IsOfType`, invalid geometry.
 - **Ids:** mildb max unit id 445949727, file max 445949729; wwt max 545949903. The 5459xxxxx range is wwt-only.
@@ -337,7 +338,7 @@ Path aliases:
   - The checker passes. Tell the user to restart before using the agents directly.
 
 ### Phase B — tools
-- [ ] **5. `tools/missionlib.py` + `tools/mission_check.py`.**
+- [x] **5. `tools/missionlib.py` + `tools/mission_check.py`.**
   - Parse, per DB: unit missions, models, stages, .ts, sheets, and the target task XML.
   - Checks:
     - context block
@@ -436,3 +437,8 @@ Path aliases:
 - 2026-11-05 step 4: CLAUDE.md rows, sw-models-navigator (shortcuts, step 3, new step 9 checkpoint safety, proposals
   step 4), one line in sw-sword / dai navigators, THEMES mission row. **Correction**: `NIL` is a shared sentinel
   (`spark/compatibility.lua`), so an absent optional parameter skips the task `<default>` (notes §1.4, MISSIONS §2).
+- 2026-11-05 step 5 (same commits): `missionlib.py` + `mission_check.py`. `--all` triaged to 22 errors / 12 warnings,
+  all real model defects (18 dia-names not in the task, EnumerationList without converter, 2 required task params
+  unfed, …); reference mission clean. Refinement: absent optional **scalar** → nil → `<default>` applies; absent
+  **object** → `NIL`, default skipped (per-converter, computed from DEC_Decision.cpp). Parallel labels and
+  `dia5/test/` are outside checkstage; it scans all of `decisional/` (taskgroups submodule empty locally).
