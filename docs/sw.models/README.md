@@ -17,7 +17,11 @@ After pulling sw.models or switching branches, from the forge root:
 python -I tools/build_models_index.py C:/MASARepo/sw.models docs/sw.models            # all indexes, model ada
 python -I tools/build_models_index.py C:/MASARepo/sw.models docs/sw.models --model mcast_v3   # a client model on its branch
 python -I tools/check_themes.py sw.models   # exit 1 + list of stale paths/anchors in THEMES.md and the agent prompt
+python -I tools/check_themes.py --ref origin/USMC_June_2026 sw.models   # same, against another branch (no checkout)
 ```
+
+In `--ref` mode, misses on lines marked `[branch-specific]` are warnings. A new miss on another line means: fix the
+path or anchor so it holds on every branch, or mark the line.
 
 The generator reads the branch that is checked out. Commit regenerated indexes only when they were built from the
 branch you want as the reference (normally the standing model's working branch); the agent falls back to grep when

@@ -9,7 +9,9 @@ other paths are relative to the sw.models root unless prefixed `sw.sword/`, `dir
 `file::text` = an anchor: that text occurs in that file (or anywhere under that dir).
 Paths are for the standing model `ada` on the branch the index was built from; client branches add other model dirs
 (see gotchas). Entity names map to files: name a.b.C = file dia5/a/b/C.xml (+ C.lua).
-Orientation docs in the repo: `README.md`, `ARCHITECTURE.md` (layout, build, checks; accurate except "entities are paired .lua + .xml", false for tasks).
+[branch-specific] on a line = some of its paths are absent on older client branches (checked with
+`python -I tools/check_themes.py --ref <branch> sw.models`); verify with `git ls-tree` on the user's branch.
+Orientation docs in the repo: `README.md`, `ARCHITECTURE.md` (layout, build, checks; accurate except "entities are paired .lua + .xml", false for tasks). [branch-specific]
 
 ## Vocabulary
 
@@ -33,7 +35,7 @@ Model terms: **entity** = one Spark XML (+ Lua) file, kind given by its root ele
 | Mission → task wiring | dia-behavior, dia-type, mrt-, cdt- | task XML `<stages>`/`<behavior name>`; index §1, §7 | `phy/Missions.xml`, `phy/Models.xml`, `phy/physical.xml` | `sw.sword/src/libraries/simulation/Entities/Agents/Roles/Decision/DEC_RolePion_Decision.cpp`, `sw.sword/src/libraries/simulation/Entities/Automates/DEC_AutomateDecision.cpp` |
 | Unit type → decisional model → role | decisional-model, dia-type, role, default-task | `dia5/military/agent/roles/`, `dia5/military/commander/roles/`, `dia5/security/agent/`, `dia5/navy/agent/roles/`, `dia5/crowd/behaviors/roles/`; index §4 | `phy/Units.xml`, `phy/Automats.xml`, `phy/Models.xml` | — |
 | Unit composition | equipment, sensor, weapon, crew, dotation | — | `phy/Units.xml`, `phy/Equipments.xml`, `phy/Sensors.xml`, `phy/WeaponSystems.xml`, `phy/Launchers.xml`, `phy/Dotations.xml` (grep, never read whole) | `docs/sw.sword/THEMES.md` (kernel meaning) |
-| Tasks and stages | stage, next-stage-when-done, let, metadata-class | `dia5/*/agent/tasks/`, `dia5/security/agent/behaviors/tasks/`, metadata classes in `tasks/knowledge/` | `phy/Stages.xml` (stage labels) | — |
+| Tasks and stages | stage, next-stage-when-done, let, metadata-class | `dia5/*/agent/tasks/`, `dia5/security/agent/behaviors/tasks/`, metadata classes in `tasks/knowledge/` | `phy/Stages.xml` (stage labels) [branch-specific] | — |
 | Skills, links, feedbacks | rootnode, connections, Activate, Feedback, links | `dia5/common/agent/behaviors/skills/`, `dia5/military/agent/skills/`, `dia5/navy/agent/skills/`; index §2 | — | directai (`docs/directai/THEMES.md`) |
 | Commander (automat) behaviors | commander, subordinates, mainTasks, supportTasks | `dia5/common/commander/`, `dia5/military/commander/`, `dia5/mildb/commander/`, `dia5/security/commander/` | `phy/Missions.xml` (automats section) | `src/checkdec/tasks.go` |
 | Queries | queries, call query, let | `dia5/common/agent/queries/`, `dia5/military/queries/`, `dia5/common/commander/queries/`; index §3 | — | — |
@@ -48,7 +50,7 @@ Model terms: **entity** = one Spark XML (+ Lua) file, kind given by its root ele
 | Mount, dismount, transport, load | Mount, Dismount, Load, Unload, Transport, Embark | `dia5/common/agent/behaviors/skills/actions/Mount.xml`, `dia5/common/agent/behaviors/skills/actions/Dismount.xml`, `dia5/common/agent/behaviors/skills/actions/Load.xml`, `dia5/common/agent/behaviors/skills/actions/Unload.xml` | `phy/Units.xml`, `phy/Equipments.xml` | — |
 | Logistics | Supply, Convoy, Haul, Medical, Maintenance, Logistic | `dia5/military/agent/skills/`, `dia5/common/agent/tasks/`, `dia5/military/agent/skills/actions/ActivateLogisticChains.xml` | `phy/Supply.xml`, `phy/Health.xml`, `phy/Maintenance.xml` | — |
 | CBRN | CBRN, NBC, Decontaminate, Contamination, AirFiltration | `dia5/common/agent/behaviors/skills/actions/`, `dia5/military/commander/tasks/` | `phy/NBC.xml` | — |
-| Radio, jamming, emissions | Radio, Radar, Emission, Jam | `dia5/common/agent/behaviors/skills/actions/SetRadioState.xml`, `dia5/common/agent/tasks/frago/` | `phy/Transmitters.xml` | — |
+| Radio, jamming, emissions | Radio, Radar, Emission, Jam | `dia5/common/agent/behaviors/skills/actions/SetRadioState.xml`, `dia5/common/agent/tasks/frago/` | `phy/Transmitters.xml` | [branch-specific] |
 | Air, drones, helicopters | Fly, Air, Drone, UAV, Helicopter, TakeOff, Land, GoBackToCP | `dia5/mildb/agent/tasks/`, `dia5/mildb/commander/`, `dia5/military/agent/roles/FlyingAgent.xml`, `dia5/military/agent/skills/GoBackToCP.xml` | `phy/Units.xml` (`can-fly`) | — |
 | Navy | Vessel, Submarine, Dive, Surface, Berth, Amphibious | `dia5/navy/`, `dia5/navy/agent/roles/Vessel.xml` | `phy/Units.xml` | — |
 | Crowds | Crowd, Population | `dia5/crowd/`, `dia5/crowd/behaviors/roles/Crowd.xml` | `phy/Crowds.xml`, `phy/Populations.xml` | — |
@@ -57,7 +59,7 @@ Model terms: **entity** = one Spark XML (+ Lua) file, kind given by its root ele
 | Client models, extensions | extensions, client, branch | `dec/extensions/`, other model dirs (data/data/models/&lt;model&gt;/) on client branches | physical/&lt;db&gt;/ of that model | — |
 | Translations, mission sheets | Locales, .ts, Mission sheets | — | `phy/Locales/fr/`, `phy/Mission sheets/` | `build/build.xml` (checktranslations, checkdec sheets) |
 | Brain entry, loading | BMAgent, Decisional.lua, decisional.xml, createBrain | `dia5/BMAgent.bms`, `dia5/Decisional.lua`, `dia5/_scripts/`, `dec/decisional.xml` | `phy/Models.xml` (`file=`) | `sw.sword/src/libraries/simulation/Decision/DEC_Workspace.cpp` |
-| Repo checks and build | ant check, checkdec, checkstages, sparkcheck, checkPackages | `dia5/.validation.lua` | — | `build/build.xml`, `build/checkdec.py`, `build/checkPackages.py`, `src/checkdec/`, `src/checkstage/`, `src/checktranslations/`, `src/models/` |
+| Repo checks and build | ant check, checkdec, checkstages, sparkcheck, checkPackages | `dia5/.validation.lua` | — | `build/build.xml`, `build/checkdec.py`, `build/checkPackages.py`, `src/checkdec/`, `src/checkstage/`, `src/checktranslations/`, `src/models/` [branch-specific] |
 | Tests (decisional) | test, Test | `dia5/test/` (roles, skills, tasks) | `wwt/` | — |
 
 ## Gotchas you would not think to grep for
@@ -68,19 +70,19 @@ Each line: the trap, then an anchor to start reading. Re-verify before quoting.
 - **Tasks have no Lua.** Task logic is in its skills and in its metadata class (`spark.metadata-class` → `tasks/knowledge/<X>.lua`). → `dia5/military/agent/tasks/AttackObjective.xml::spark.metadata-class`
 - **The mission → task link is `dia-behavior`, not `dia-type`** (they can differ); automat missions use `mrt-dia-behavior` and `cdt-dia-behavior`. → `phy/Missions.xml::dia-type="agent.behaviors.tasks.PerformAWork_dike"`, `sw.sword/src/libraries/simulation/Entities/Automates/DEC_AutomateDecision.cpp::ePhaseCDT`
 - **A mission is only available to a unit if its decisional model lists it by name** in `Models.xml`, whose `dia-type` is a **role** (not a task). A mission name appears in `Missions.xml`, `Models.xml` (once per model), `Locales/fr/Missions_fr.ts` and `Mission sheets/`. → `phy/Models.xml::<mission name="COMBAT - Attack objective">`
-- **ada has two physical DBs** that differ (missions, models, frag orders): `mildb` and `worldwide-tests`. Check both. → `wwt/physical.xml`, `build/build.xml::checkstage base="worldwide-tests"`
+- **ada has two physical DBs** that differ (missions, models, frag orders): `mildb` and `worldwide-tests`. Check both. → `wwt/physical.xml`, `build/build.xml::checkstage base="worldwide-tests"` [branch-specific]
 - **Client models are whole model dirs on their branch** (`DB-6.26.2`, `mcast_v3`, `USMC`, …), with their own decisional and physical DBs; `ada/decisional/extensions/` holds only a readme. → `dec/extensions/readme.txt::client decisional models`
 - **`taskgroup.*` tasks and roles live in a git submodule**, empty unless initialised: unresolved in grep, not an error. → `.gitmodules::sw.taskgroup-decisional`
 - **Frag orders start tasks through `FragOrder.lua`**: `dia-type` → `fragOrderTaskInitializers` entry → task; no entry → `integration.startFragOrder`. Client extensions add entries through `extensionsFragosInit`. → `dia5/FragOrder.lua::fragOrderTaskInitializers`, `dia5/FragOrder.lua::extensionsFragosInit`
 - **Commander skills name unit tasks in `<string>` values**, `;`-separated, in params like `mainTasks`: a rename that only greps XML attributes misses them. → `src/checkdec/tasks.go::mainTasks`
-- **Lua refers to tasks by string and to queries by bare dotted name** (`common.agent.queries.getX( {…} )`): grep the full dotted name, not the file name. → `dia5/common/agent/behaviors/skills/actions/MoveTo.lua::common.agent.queries.getEquivalentNavyPathType`
+- **Lua refers to tasks by string and to queries by bare dotted name** (`common.agent.queries.getX( {…} )`): grep the full dotted name, not the file name. → `dia5/common/agent/behaviors/skills/BreachObjectAlongRoads.lua::common.agent.queries.getAreasToBreachObjectAlongRoads(`
 - **Models never call `DEC_*` directly**; only `integration.*` (enforced by `checkdec.py` against `decfunctions.txt`). → `build/checkdec.py::don't directly call DEC functions`
 - **`FragOrder.lua` overrides `integration.*` functions** at load time (model-side override of the layer). → `dia5/FragOrder.lua::integration.startFragOrderTask = fragOrder.startFragOrderTask`
 - **Families may only depend on allowed families** (common → none; military, security, crowd → common; mildb, navy → common + military). → `build/checkPackages.py::authorisedPackages[ "navy" ]`
-- **Every `<stage label>` must exist in each DB's `Stages.xml`** (`ant generate-stages` fixes it); `dia5/test/` is ignored. → `src/checkstage/stage.go::stage label=`, `build/build.xml::generate-stages`
+- **Every `<stage label>` must exist in each DB's `Stages.xml`** (`ant generate-stages` fixes it); `dia5/test/` is ignored. → `src/checkstage/stage.go::stage label=`, `build/build.xml::generate-stages` [branch-specific]
 - **`checkdec tasks` only warns** (`failonerror="false"`), and its parser reads an old task shape (`stages>skills>skill`). → `build/build.xml::failonerror="false"`, `src/models/decdb.go::skills>skill`
 - **Names are case-sensitive references; two tasks cite their metadata class with the wrong case** (`BypassObjects` vs `ByPassObjects`). Index §10 lists such mismatches. → `dia5/mildb/agent/tasks/ByPassObjects.xml::mildb.agent.tasks.knowledge.BypassObjects`
 - **`decisional.xml` is generated and gitignored** (`gendec`, `ant configure`); its `model-version` gates sim startup. → `.gitignore::decisional.xml`, `sw.sword/src/libraries/simulation/Decision/DEC_Workspace.cpp::model-version`
 - **Role Lua maps ontology types** for the integration layer (`sw.ai.setRoleProperties`). Only 14 of 32 roles have Lua. → `dia5/military/agent/roles/Agent.lua::sw.ai.setRoleProperties`
 - **`sparkcheck` runs with a mock environment**: a load-time global missing from it fails the check. → `dia5/.validation.lua::Validation environment`
-- **Translations are fixed by loading and saving the DB in SWORD Adaptation**, not by hand. → `build/build.xml::Fix translations`
+- **Translations are fixed by loading and saving the DB in SWORD Adaptation**, not by hand. → `build/build.xml::Fix translations` [branch-specific]

@@ -1,8 +1,12 @@
 """Check that every code path and anchor cited in forge navigator docs still exists.
 
-Usage (from the forge root): python -I tools/check_themes.py [kit-or-file ...]
+Usage (from the forge root): python -I tools/check_themes.py [--ref <git ref>] [kit-or-file ...]
 With no argument, checks every kit in KITS. An argument is a kit name (e.g. `directai`) or one of a kit's files.
 Repos are resolved as siblings of forge (C:/MASARepo/<repo>). Exit code 1 if anything is missing.
+
+--ref <branch|commit>: check the kit's own repo as of that ref (git ls-tree / git grep, no checkout); paths in other
+repos are still checked in their working trees. Needs exactly one kit. A line containing the marker
+BRANCH_MARK ("[branch-specific]") reports its misses as warnings, not errors, in --ref mode.
 
 Checked tokens (inside backticks):
   - paths starting with a kit alias, a kit root dir (resolved in the kit's repo), or another repo name (`sw.models/...`)
@@ -10,9 +14,11 @@ Checked tokens (inside backticks):
   - `path::text`  -> path exists and contains text (recursively if path is a directory)
   - bare file names (`Foo.cpp`, globs allowed) -> exist under the last directory cited earlier on the same line
 """
+import fnmatch
 import glob
 import os
 import re
+import subprocess
 import sys
 
 FORGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -56,6 +62,7 @@ KITS = {
     },
 }
 
+BRANCH_MARK = "[branch-specific]"
 BARE = re.compile(r"^[A-Za-z0-9_*.]+\.(cpp|h|lua|xml|xsd|go|py|bms)$")
 TICK = re.compile(r"`([^`\n]+)`")
 ABS = re.compile(r"^[A-Za-z]:/MASARepo/")
@@ -76,11 +83,52 @@ def resolve(token, kit):
     return None
 
 
-def matches(path):
+class RefTree:
+    """A repo as of a git ref: answers the same questions as the filesystem helpers below, for paths inside it."""
+
+    def __init__(self, repo, ref):
+        self.repo, self.ref = repo, ref
+        out = subprocess.run(["git", "-C", repo, "ls-tree", "-r", "-z", "--name-only", "--full-tree", ref],
+                             capture_output=True, check=True).stdout.decode("utf-8", "replace")
+        self.files = {p for p in out.split("\0") if p}
+        self.dirs = {p.rsplit("/", i)[0] for p in self.files for i in range(1, p.count("/") + 1)}
+
+    def rel(self, path):
+        r = os.path.relpath(path, self.repo).replace("\\", "/").rstrip("/")
+        return None if r.startswith("..") else r
+
+    def matches(self, path):
+        r = self.rel(path)
+        if any(c in r for c in "*?["):
+            return [os.path.join(self.repo, p) for p in sorted(self.files | self.dirs) if fnmatch.fnmatchcase(p, r)]
+        return [path] if r in self.files or r in self.dirs or r == "." else []
+
+    def isdir(self, path):
+        return self.rel(path) in self.dirs
+
+    def contains(self, path, text):
+        r = self.rel(path)
+        spec = [] if r == "." else [f":(literal){r}"]
+        res = subprocess.run(["git", "-C", self.repo, "grep", "-q", "-F", "-e", text, self.ref, "--", *spec],
+                             capture_output=True)
+        return res.returncode == 0
+
+
+def matches(path, tree=None):
+    if tree and tree.rel(path) is not None:
+        return tree.matches(path)
     return glob.glob(path) if any(c in path for c in "*?[") else ([path] if os.path.exists(path) else [])
 
 
-def contains(path, text):
+def isdir(path, tree=None):
+    if tree and tree.rel(path) is not None:
+        return tree.isdir(path)
+    return os.path.isdir(path)
+
+
+def contains(path, text, tree=None):
+    if tree and tree.rel(path) is not None:
+        return tree.contains(path, text)
     files = [path] if os.path.isfile(path) else [
         os.path.join(r, f) for r, _, fs in os.walk(path) for f in fs]
     for f in files:
@@ -93,12 +141,13 @@ def contains(path, text):
     return False
 
 
-def check(md, kit):
-    errors, checked = [], 0
+def check(md, kit, tree=None):
+    errors, warnings, checked = [], [], 0
     with open(md, encoding="utf-8") as fh:
         lines = fh.read().splitlines()
     for n, line in enumerate(lines, 1):
         last_dir = None
+        sink = warnings if tree and BRANCH_MARK in line else errors
         for token in TICK.findall(line):
             token = token.strip()
             path_part, _, anchor = token.partition("::")
@@ -108,19 +157,19 @@ def check(md, kit):
             if target is None:
                 if last_dir and BARE.match(token):
                     checked += 1
-                    if not matches(os.path.join(last_dir, token)):
-                        errors.append(f"{md}:{n}: `{token}` not found under {os.path.relpath(last_dir, MASA)}")
+                    if not matches(os.path.join(last_dir, token), tree):
+                        sink.append(f"{md}:{n}: `{token}` not found under {os.path.relpath(last_dir, MASA)}")
                 continue
             checked += 1
-            found = matches(target)
+            found = matches(target, tree)
             if not found:
-                errors.append(f"{md}:{n}: missing path `{path_part}`")
+                sink.append(f"{md}:{n}: missing path `{path_part}`")
                 continue
-            if os.path.isdir(found[0]):
+            if isdir(found[0], tree):
                 last_dir = found[0]
-            if anchor and not any(contains(p, anchor) for p in found):
-                errors.append(f"{md}:{n}: `{anchor}` not found in `{path_part}`")
-    return errors, checked
+            if anchor and not any(contains(p, anchor, tree) for p in found):
+                sink.append(f"{md}:{n}: `{anchor}` not found in `{path_part}`")
+    return errors, warnings, checked
 
 
 def targets(args):
@@ -142,17 +191,39 @@ def targets(args):
 
 
 def main():
-    total_err, total = [], 0
-    for md, kit in targets(sys.argv[1:]):
+    args, ref = sys.argv[1:], None
+    if "--ref" in args:
+        i = args.index("--ref")
+        if i + 1 >= len(args):
+            sys.exit("--ref needs a git ref")
+        ref = args[i + 1]
+        del args[i:i + 2]
+    pairs = list(targets(args))
+    tree = None
+    if ref:
+        kits = {id(k): k for _, k in pairs}
+        if len(kits) != 1:
+            sys.exit("--ref needs exactly one kit")
+        repo = os.path.join(MASA, next(iter(kits.values()))["repo"])
+        try:
+            tree = RefTree(repo, ref)
+        except subprocess.CalledProcessError:
+            sys.exit(f"{ref}: unknown ref in {repo}")
+    total_err, total_warn, total = [], [], 0
+    for md, kit in pairs:
         if not os.path.exists(md):
             total_err.append(f"{md}: file missing")
             continue
-        errs, n = check(md, kit)
+        errs, warns, n = check(md, kit, tree)
         total_err += errs
+        total_warn += warns
         total += n
     for e in total_err:
         print(e)
-    print(f"{total} references checked, {len(total_err)} problem(s).")
+    for w in total_warn:
+        print("warning (branch-specific):", w)
+    at = f" at {ref}" if ref else ""
+    print(f"{total} references checked{at}, {len(total_err)} problem(s), {len(total_warn)} branch-specific warning(s).")
     sys.exit(1 if total_err else 0)
 
 

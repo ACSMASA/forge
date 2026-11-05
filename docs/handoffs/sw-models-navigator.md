@@ -194,7 +194,7 @@ _(filled in at step 1; a resumed session must not ask again)_
   - Write `docs/sw.models/README.md` with the commands to regenerate the indexes and run the checker.
   - Add a `sw.models` entry to `KITS` in `tools/check_themes.py`.
   - *Done when:* `python -I tools/check_themes.py` (all kits) passes.
-- [ ] **5. Checker branch mode.**
+- [x] **5. Checker branch mode.**
   - Add an option to check a kit against another branch (`git ls-tree` / `git show`, no checkout).
   - *Done when:* it runs on the sw.models kit against one project branch, and every THEMES path missing there is fixed or marked branch-specific.
 - [ ] **6. Agent and skill.**
@@ -279,4 +279,8 @@ _(one entry per finished step: date, step, what was produced, what the next step
 - 2026-11-05, step 4: `docs/sw.models/THEMES.md` (vocabulary, 30 theme rows, 20 anchored gotchas), `docs/sw.models/README.md`,
   `sw.models` kit in `tools/check_themes.py` (aliases `dia5/`, `dec/`, `phy/`, `wwt/`). The kit lists only THEMES for
   now: **step 6 must add `.claude/agents/sw-models-navigator.md` to its `files`.** All kits: 616 refs, 0 problems.
+- 2026-11-05, step 5: `check_themes.py --ref <ref> <kit>` (git ls-tree + `git grep -F`, ~1 s); lines with
+  `[branch-specific]` give warnings in ref mode. Fixed 1 anchor (MoveTo.lua → BreachObjectAlongRoads.lua), marked 6
+  lines (ARCHITECTURE.md, Stages.xml, checkstage/checktranslations, SetRadioState are newer than the client branches).
+  0 problems on master, USMC_June_2026 (4 warnings), QQ_MCAST_UK_04_2026 (9), USMC_AIR_DRONE_June_2026 (2).
 
