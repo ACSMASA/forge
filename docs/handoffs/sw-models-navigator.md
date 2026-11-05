@@ -223,7 +223,7 @@ _(filled in at step 1; a resumed session must not ask again)_
     - where world objects are created (ask `sw-sword-navigator`)
     - which type rules directai enforces (ask `dai-navigator`)
   - Output: `_build_notes.md` § B.
-- [ ] **9. Generator: ontology index.**
+- [x] **9. Generator: ontology index.**
   - Output `docs/sw.models/ontology_index.md`, with the anomaly report and the note that callers are upper bounds.
   - *Done when:* the class, interface and role counts match a grep (about 173 / 36 / 32 in ada on 2026-11-05).
 - [ ] **10. Ontology in THEMES and the agent.**
@@ -316,4 +316,10 @@ _(one entry per finished step: date, step, what was produced, what the next step
   ada passes directai rules A/B (0 violations), so anomaly value is in implementers (17 interfaces ≤1), 76 never-called
   method names, duplicates. Role `.lua` = only `sw.ai.setRoleProperties` type maps; keys default to `sparkle.Object`
   (sw.sword `ontologyKeys`); mission param type → key in `DEC_Decision.cpp::functorsBM`. Answers from both navigators verified.
+- 2026-11-05, step 9: `build_models_index.py --only ontology [--sword …]` → `docs/sw.models/ontology_index.md` (362 KB,
+  ~4.5 s): world classes, 1222 world-class methods with callers by name (upper bounds), interfaces, task-metadata
+  classes, roles + type map (parsed from sw.sword `ontologyKeys` / `functorsBM`), anomalies (17 interfaces ≤1
+  implementer, rules A/B 0 — mutation test catches both, 69 never-called names, 71 unrelated duplicates,
+  `avoidingArea` nil key). Counts 41+132 / 36 / 32 match. Also fixed entity descriptions (only the root's own
+  `<description>`; 62 wrong ones dropped from the decisional index). Prototype removed.
 

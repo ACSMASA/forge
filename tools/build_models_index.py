@@ -2,11 +2,14 @@
 
 Usage (from the forge root):
     python -I tools/build_models_index.py <sw.models root> <out dir> [--model ada] [--only decisional,ontology,actions]
+                                          [--sword C:/MASARepo/sw.sword]
 
 Outputs (in <out dir>):
   decisional_index.md  entities (skills, tasks, queries, roles, resources, classes, interfaces) with their wiring,
                        missions per physical DB, decisional models, frag orders, unresolved references
-  ontology_index.md    (phase B, not yet implemented)
+  ontology_index.md    world classes, methods (declared / implemented / callers by name), interfaces and their
+                       implementers, task-metadata classes, roles and the ontology type map, anomaly report
+                       (reads sw.sword integration Lua and DEC_Decision.cpp when --sword exists)
   action_index.md      (phase C, not yet implemented)
 
 Each output header records the repo branch and commit it was built from.
@@ -92,8 +95,9 @@ class Entity:
         self.lua = os.path.exists(path[:-4] + ".lua")
         self.lua_text = strip_lua(read(path[:-4] + ".lua")) if self.lua else ""
         self.desc = ""
-        m = DESC.search(text)
-        if m and ("<parameter " not in text[: m.start()]):
+        body = XML_COMMENT.sub("", text)
+        m = DESC.search(body)
+        if m and len(re.findall(r"<[A-Za-z]", body[: m.start()])) == 1:  # the root's own description only
             self.desc = first_sentence(m.group(1))
         self.uses = defaultdict(set)  # via -> targets
         self.integration = set(INTEG.findall(self.lua_text))
@@ -208,6 +212,7 @@ def scan_physical(model_dir):
                     a = dict(m.attrib)
                     a["section"] = section.tag
                     a["params"] = [p.get("dia-name", "") for p in m.findall("parameter") if p.get("is-context") != "true"]
+                    a["ptypes"] = [p.get("type", "") for p in m.findall("parameter")]
                     d["missions"].append(a)
         mo = os.path.join(phys, db, files.get("models", "Models.xml"))
         if os.path.isfile(mo):
@@ -519,21 +524,494 @@ def build_decisional(repo, model, out):
     return counts, dbs
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# ontology
+
+
+def blank_lua(src):
+    """Drop Lua comments and blank string contents, keeping the code structure."""
+    out, i, n = [], 0, len(src)
+    while i < n:
+        c = src[i]
+        if src.startswith("--", i):
+            m = re.match(r"--\[(=*)\[", src[i:i + 20])
+            if m:
+                end = src.find("]" + m.group(1) + "]", i)
+                i = n if end < 0 else end + len(m.group(1)) + 2
+            else:
+                j = src.find("\n", i)
+                i = n if j < 0 else j
+            continue
+        m = re.match(r"\[(=*)\[", src[i:i + 20])
+        if m:
+            end = src.find("]" + m.group(1) + "]", i)
+            out.append('""')
+            i = n if end < 0 else end + len(m.group(1)) + 2
+            continue
+        if c in "\"'":
+            j = i + 1
+            while j < n and src[j] != c and src[j] != "\n":
+                j += 2 if src[j] == "\\" else 1
+            out.append('""')
+            i = j + 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+LUA_TOK = re.compile(r"[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*\s*=(?!=)|[A-Za-z_]\w*|==|~=|<=|>=|\S")
+METHOD_CALL = re.compile(r":\s*([A-Za-z_]\w*)\s*[\(\{\"]")
+LUA_SPECIAL = {"__init", "__call", "__daihash", "__decode", "__eq", "__encode", "__gc", "__le", "__lt", "__tostring"}
+
+
+def lua_class_methods(src):
+    """Methods of a class .lua: keys assigned at brace depth 1 (`return { m = … }`) or `X.m = …` at depth 0, outside any
+    function / control block and outside call parentheses. Returns {name: form}."""
+    keys = {}
+    brace = paren = pend_do = 0
+    blocks = []
+    for m in LUA_TOK.finditer(blank_lua(src)):
+        t = m.group(0)
+        if t[-1] == "=" and (t[0].isalpha() or t[0] == "_"):
+            lhs = re.sub(r"\s", "", t[:-1])
+            if not blocks and not paren:
+                rhs = m.string[m.end():m.end() + 40].lstrip()
+                form = ("function" if rhs.startswith("function") else
+                        "startStopAction" if rhs.startswith("spark.startStopAction") else
+                        "spark.action" if rhs.startswith("spark.action") else "alias")
+                if brace == 1 and "." not in lhs:
+                    keys.setdefault(lhs, form)
+                elif brace == 0 and lhs.count(".") == 1:
+                    keys.setdefault(lhs.split(".")[1], form)
+            continue
+        if t == "{":
+            brace += 1
+        elif t == "}":
+            brace -= 1
+        elif t == "(":
+            paren += 1
+        elif t == ")":
+            paren -= 1
+        elif t in ("function", "if", "repeat"):
+            blocks.append(t)
+        elif t in ("while", "for"):
+            pend_do += 1
+            blocks.append(t)
+        elif t == "do":
+            if pend_do:
+                pend_do -= 1
+            else:
+                blocks.append("do")
+        elif t in ("end", "until") and blocks:
+            blocks.pop()
+    return keys
+
+
+def repo_stamp(repo):
+    branch = git(repo, "branch", "--show-current") or "(detached)"
+    return branch, git(repo, "rev-parse", "--short=10", "HEAD"), git(repo, "log", "-1", "--format=%cs", "HEAD")
+
+
+def scan_sword(sword):
+    """sw.sword side: integration Lua files, ontologyKeys defaults, Missions.xml parameter type -> ontology key."""
+    res = {"files": {}, "keys": [], "ptype_keys": {}, "ok": False}
+    integ_dir = os.path.join(sword, "data", "app-data", "resources", "integration")
+    top = os.path.join(sword, "data", "app-data", "resources", "Integration.lua")
+    if not os.path.isdir(integ_dir):
+        return res
+    res["ok"] = True
+    for f in sorted(os.listdir(integ_dir)):
+        if f.endswith(".lua"):
+            res["files"][f"integration/{f}"] = blank_lua(read(os.path.join(integ_dir, f)))
+    if os.path.isfile(top):
+        raw = read(top)
+        res["files"]["Integration.lua"] = blank_lua(raw)
+        m = re.search(r"local\s+ontologyKeys\s*=\s*\{(.*?)\}", raw, re.S)
+        res["keys"] = re.findall(r'"(\w+)"', m.group(1)) if m else []
+    cpp = os.path.join(sword, "src", "libraries", "simulation", "Decision", "DEC_Decision.cpp")
+    if os.path.isfile(cpp):
+        txt = read(cpp)
+        bodies = {}
+        for m in re.finditer(r"^bool\s+(\w+FunctionBM)\s*\(", txt, re.M):
+            end = txt.find("\n}", m.end())
+            bodies[m.group(1)] = txt[m.end():end]
+
+        def keys_of(fn, seen=()):
+            b = bodies.get(fn, "")
+            ks = re.findall(r"integration\.ontology\.types\.(\w+)", b)
+            for sub in re.findall(r"\b(\w+FunctionBM)\s*\(", b):
+                if sub != fn and sub not in seen:
+                    ks += keys_of(sub, seen + (fn,))
+            return list(dict.fromkeys(ks))
+
+        for t, fn in re.findall(r'functorsBM\[\s*"(\w+)"\s*\]\s*=\s*(\w+)', txt):
+            res["ptype_keys"][t] = keys_of(fn)
+    return res
+
+
+def build_ontology(repo, model, out, sword):
+    dia5 = os.path.join(repo, "data", "data", "models", model, "decisional", "dia5")
+    if not os.path.isdir(dia5):
+        sys.exit(f"{dia5}: not found")
+    ents = scan_decisional(dia5)
+    link_refs(ents, [])
+    users = users_of(ents, {})
+    classes = {n: e for n, e in ents.items() if e.kind == "class"}
+    ifaces = {n: e for n, e in ents.items() if e.kind == "interface"}
+    roles = {n: e for n, e in ents.items() if e.kind == "role"}
+
+    # --- per class / interface XML data and Lua methods
+    for e in list(classes.values()) + list(ifaces.values()) + list(roles.values()):
+        body = XML_COMMENT.sub("", e.text)
+        root = ROOT_RE.search(body)
+        e.abstract = 'abstract="true"' in root.group(2)
+        e.parent = (XML_REFS["extends"].findall(body) or [None])[0] if e.kind != "interface" else None
+        e.ifs = XML_REFS["extends"].findall(body) if e.kind == "interface" else XML_REFS["implements"].findall(body)
+        mm = re.search(r"<methods>(.*)</methods>", body, re.S)
+        tags = re.findall(r"<method\s([^>]*)>", mm.group(1)) if mm else []
+        e.declared = {NAME_RE.search(a).group(1): ('abstract="true"' in a or e.kind == "interface") for a in tags}
+        e.ctor = "<constructor" in body
+        e.methods = lua_class_methods(read(e.path[:-4] + ".lua")) if e.lua else {}
+
+    def chain(n):
+        out_ = []
+        while n in classes and n not in out_:
+            out_.append(n)
+            n = classes[n].parent
+        return out_, n  # n = first non-model ancestor (sparkle.*) or None
+
+    def iface_closure(names):
+        seen, todo = set(), list(names)
+        while todo:
+            i = todo.pop()
+            if i in seen or i not in ifaces:
+                continue
+            seen.add(i)
+            todo += ifaces[i].ifs
+        return seen
+
+    meta = {n for n in classes if chain(n)[1] == "sparkle.TaskMetadata"}
+    world = {n: classes[n] for n in classes if n not in meta}
+    subclasses = defaultdict(set)
+    for n in classes:
+        for anc in chain(n)[0][1:]:
+            subclasses[anc].add(n)
+    all_ifs = {n: iface_closure(i for c in chain(n)[0] for i in classes[c].ifs) for n in classes}
+    direct_impl = defaultdict(set)
+    trans_impl = defaultdict(set)
+    for n in classes:
+        for i in classes[n].ifs:
+            direct_impl[i].add(n)
+        for i in all_ifs[n]:
+            trans_impl[i].add(n)
+    iface_methods = {i: {m for j in iface_closure([i]) for m in ifaces[j].declared} for i in ifaces}
+
+    # --- callers by method name (upper bounds)
+    sw = scan_sword(sword) if sword else {"ok": False, "files": {}, "keys": [], "ptype_keys": {}}
+    callers = defaultdict(lambda: defaultdict(set))  # method -> scope -> files/entities
+    by_path = {os.path.normcase(e.path[:-4] + ".lua"): e.name for e in ents.values() if e.lua}
+    for root_, _, fs in os.walk(dia5):
+        for f in fs:
+            if f.endswith(".lua"):
+                p = os.path.join(root_, f)
+                label = by_path.get(os.path.normcase(p), os.path.relpath(p, dia5).replace("\\", "/"))
+                for m in METHOD_CALL.findall(blank_lua(read(p))):
+                    callers[m]["model"].add(label)
+    for label, txt in sw["files"].items():
+        for m in METHOD_CALL.findall(txt):
+            callers[m]["sword"].add(label)
+
+    # --- roles: effective body type and ontology type map
+    def role_chain(n):
+        out_ = []
+        while n in roles and n not in out_:
+            out_.append(n)
+            n = roles[n].parent
+        return out_
+
+    role_map, role_map_src, role_body, role_body_src = {}, {}, {}, {}
+    for n, e in roles.items():
+        own = re.search(r"setRoleProperties", e.lua_text or "")
+        e.typemap = dict(re.findall(r"^\s*(\w+)\s*=\s*([a-z]\w*(?:\.\w+)+)\s*,?\s*$", e.lua_text, re.M)) if own else None
+    for n in roles:
+        for r in role_chain(n):
+            if roles[r].typemap is not None:
+                role_map[n], role_map_src[n] = roles[r].typemap, r
+                break
+        for r in role_chain(n):
+            bt = BODY_TYPE.search(roles[r].text)
+            if bt:
+                role_body[n], role_body_src[n] = bt.group(1), r
+                break
+    key_classes = defaultdict(lambda: defaultdict(set))  # key -> class -> roles
+    class_keys = defaultdict(set)  # class -> keys
+    for n, mp in role_map.items():
+        for k, c in mp.items():
+            key_classes[k][c].add(n)
+            class_keys[c].add(k)
+    for n in roles:
+        for k in sw["keys"]:
+            if k not in role_map.get(n, {}):
+                key_classes[k]["sparkle.Object (default)"].add(n)
+    key_ptypes = defaultdict(list)
+    for t, ks in sw["ptype_keys"].items():
+        for k in ks:
+            key_ptypes[k].append(t)
+    used_keys = Counter()
+    key_users = defaultdict(set)
+    for root_, _, fs in os.walk(dia5):
+        for f in fs:
+            if f.endswith(".lua"):
+                p = os.path.join(root_, f)
+                for k in re.findall(r"integration\.ontology\.types\.(\w+)", blank_lua(read(p))):
+                    used_keys[k] += 1
+                    key_users[k].add(by_path.get(os.path.normcase(p), f))
+    sword_key_files = defaultdict(set)
+    for label, txt in sw["files"].items():
+        for k in re.findall(r"integration\.ontology\.types\.(\w+)", txt):
+            sword_key_files[k].add(label)
+
+    # --- header
+    branch, head, date = repo_stamp(repo)
+    dirty = git(repo, "status", "--porcelain", "--", f"data/data/models/{model}")
+    L = []
+    w = L.append
+    w("# sw.models ontology index (generated)\n")
+    w(f"Generated by `forge/tools/build_models_index.py` from sw.models **`{branch}` @ `{head}`** ({date}), model "
+      f"`{model}`{' — **working tree had uncommitted changes in this model**' if dirty and dirty != '?' else ''}. "
+      f"Built {datetime.date.today()}." + (
+          " sw.sword side (integration Lua callers, `ontologyKeys`, `DEC_Decision.cpp::functorsBM`) read from "
+          "**`%s` @ `%s`** (%s).\n" % repo_stamp(sword) if sw["ok"] else
+          " sw.sword not found: integration callers, default keys and parameter types are missing.\n"))
+    w("**Stale check:** if `git -C C:/MASARepo/sw.models rev-parse --short=10 HEAD` differs from the commit above, "
+      "treat this file as a hint only and confirm with grep. **Grep this file, never read it whole.**\n")
+    w("**Callers are name matches, i.e. upper bounds.** A Lua call `x:m(` cannot be tied to a type statically, so every "
+      "class with a method `m` gets the same caller list. \"model\" = this model's Lua (entity name, or file for "
+      "top-level Lua), \"sword\" = sw.sword `data/app-data/resources/integration*`. A method called through a name built "
+      "at runtime, or only by the kernel C++, shows no caller.\n")
+    w("Rules checked (directai validator, see THEMES): **A** a concrete class must re-declare, non-abstract, in its own "
+      "or an ancestor's XML every method of its interfaces (`class.method.unimplemented`); **B** a class `.lua` may only "
+      "define methods declared in its own XML, and must define every own non-abstract one "
+      "(`class.lua.method.missing-declaration` / `…unimplemented`); `<constructor>` ⇔ `__init`.\n")
+
+    w("## Counts\n")
+    w(f"| Kind | Count |\n|---|---|\n| class (world) | {len(world)} |\n| class (task metadata, chain to "
+      f"`sparkle.TaskMetadata`) | {len(meta)} |\n| interface | {len(ifaces)} |\n| role | {len(roles)} |\n"
+      f"| world-class methods implemented | {sum(len(e.methods) for e in world.values())} |\n")
+
+    # --- 1. world classes
+    w("## 1. World classes\n")
+    w("Chain = `<extends>` up to the root (model classes implicitly extend `sparkle.Object`). Interfaces: own `<implements>`, "
+      "then + inherited count (via ancestors and interface `<extends>`). Methods: declared in own XML / implemented in own "
+      "`.lua` / inherited only / of which startStopAction. Keys = ontology keys mapping to the class in role type maps "
+      "(roles in brackets); Param types = `Missions.xml` parameter types the kernel wraps with those keys.\n")
+    w("| Class | Abstract | Chain | Interfaces | Ctor | Methods decl/impl/inh/ssa | Keys (roles) | Param types | "
+      "Subclasses | Used as type | Description |")
+    w("|---|---|---|---|---|---|---|---|---|---|---|")
+    for n, e in sorted(world.items()):
+        ch, root_ = chain(n)
+        inh = set()
+        for c in ch[1:]:
+            inh |= set(classes[c].methods)
+        inh -= set(e.methods)
+        keys = sorted(class_keys.get(n, ()))
+        keys_s = ", ".join(f"`{k}` ({len(key_classes[k][n])})" for k in keys)
+        pts = sorted({t for k in keys for t in key_ptypes.get(k, ())})
+        extra_if = len(all_ifs[n] - set(e.ifs))
+        w(f"| `{n}` | {'yes' if e.abstract else ''} | {' → '.join(f'`{c}`' for c in ch[1:]) or ''}"
+          f"{' → `' + root_ + '`' if root_ else ''} | {code(e.ifs)}{f' +{extra_if}' if extra_if else ''} | "
+          f"{'yes' if e.ctor else ''} | {len(e.declared)}/{len(e.methods)}/{len(inh)}/"
+          f"{sum(1 for f in e.methods.values() if f == 'startStopAction')} | {keys_s} | {', '.join(pts)} | "
+          f"{code(subclasses.get(n, ()), 12)} | {len(users[n].get('type', ()))} | {e.desc} |")
+    w("")
+
+    # --- 2. methods
+    w("## 2. World-class methods\n")
+    w("One row per method implemented in a class `.lua` or declared abstract. Form: function / startStopAction / alias / "
+      "abstract. Overrides = nearest ancestor that also implements it. For = interfaces (of the class, transitively) "
+      "declaring it. Callers: count of distinct entities/files, model then sword (names capped).\n")
+    w("| Method | Form | Overrides | For interfaces | Callers model | Callers sword |")
+    w("|---|---|---|---|---|---|")
+    for n, e in sorted(world.items()):
+        ch, _ = chain(n)
+        names = set(e.methods) | {m for m, ab in e.declared.items() if ab}
+        for m in sorted(names):
+            if m in LUA_SPECIAL:
+                continue
+            form = e.methods.get(m, "abstract")
+            ov = next((c for c in ch[1:] if m in classes[c].methods), "")
+            fi = sorted(i for i in all_ifs[n] if m in ifaces[i].declared)
+            cm, cs = callers[m].get("model", set()), callers[m].get("sword", set())
+            w(f"| `{n}:{m}` | {form} | {('`' + ov + '`') if ov else ''} | {code(fi)} | "
+              f"{len(cm)}{': ' + code(cm, 6) if cm else ''} | {len(cs)}{': ' + code(cs, 4) if cs else ''} |")
+    w("")
+
+    # --- 3. interfaces
+    w("## 3. Interfaces\n")
+    w("Implementers: direct (`<implements>`) and transitive (subclasses of implementers, and via interfaces extending this "
+      "one). Used as type = model entities with an `<object type>` of this interface (skills/queries `<body-type>` included).\n")
+    w("| Interface | Extends | Extended by | Methods (own) | Direct implementers | Transitive (count) | Used as type | Description |")
+    w("|---|---|---|---|---|---|---|---|")
+    ext_by = defaultdict(set)
+    for i, e in ifaces.items():
+        for x in e.ifs:
+            ext_by[x].add(i)
+    for i, e in sorted(ifaces.items()):
+        w(f"| `{i}` | {code(e.ifs)} | {code(ext_by.get(i, ()))} | {len(e.declared)}: {', '.join(sorted(e.declared))} | "
+          f"{code(direct_impl.get(i, ()))} | {len(trans_impl.get(i, ()))} | {len(users[i].get('type', ()))} | {e.desc} |")
+    w("")
+
+    # --- 4. task metadata classes
+    w("## 4. Task-metadata classes\n")
+    w("Classes whose chain reaches `sparkle.TaskMetadata` (base classes `common.agent.world.PlatoonTask`, "
+      "`common.commander.behaviors.tasks.knowledges.CompanyTask`). Tasks = tasks citing it in "
+      "`<annotation key=\"spark.metadata-class\">`. Methods = implemented in its `.lua`.\n")
+    w("| Class | Parent | Tasks | Methods | integration.* |\n|---|---|---|---|---|")
+    for n, e in sorted(classes.items()):
+        if n in meta:
+            w(f"| `{n}` | `{e.parent}` | {code(users[n].get('metadata', ()))} | "
+              f"{', '.join(sorted(m for m in e.methods if m not in LUA_SPECIAL))} | {len(e.integration)} |")
+    w("")
+
+    # --- 5. roles and type map
+    w("## 5. Roles\n")
+    w("Body type = nearest `<body-type>` up the `<extends>` chain (directai inherits it); Type map = the role whose `.lua` "
+      "`sw.ai.setRoleProperties` map applies (own or nearest parent: child roles get a copy of the parent's properties). "
+      "Default keys = sw.sword `ontologyKeys` missing from that map, which fall back to `sparkle.Object`.\n")
+    w("| Role | Extends | Body type (from) | Type map from | Default keys (sparkle.Object) |\n|---|---|---|---|---|")
+    for n in sorted(roles):
+        mp = role_map.get(n, {})
+        miss = [k for k in sw["keys"] if k not in mp]
+        w(f"| `{n}` | {('`' + roles[n].parent + '`') if roles[n].parent else ''} | "
+          f"{('`' + role_body[n] + '`') if n in role_body else '✗ (sparkle.Object)'}"
+          f"{'' if role_body_src.get(n) in (n, None) else ' (from `' + role_body_src[n] + '`)'} | "
+          f"{('`' + role_map_src[n] + '`') if n in role_map_src else '✗'} | {', '.join(miss)} |")
+    w("")
+    w("## 6. Ontology type map (`integration.ontology.types.<key>`)\n")
+    w("Per key: class per role (number of roles), the `Missions.xml` parameter types the kernel wraps with it "
+      "(`DEC_Decision.cpp::functorsBM`), how many model Lua uses (`CreateKnowledge( integration.ontology.types.<key>, …)` "
+      "and others), and which sw.sword integration files read it.\n")
+    w("| Key | Class (roles) | Param types | Model Lua uses | sword files |\n|---|---|---|---|---|")
+    all_keys = sorted(set(key_classes) | set(used_keys) | set(sw["keys"]) | set(sword_key_files))
+    for k in all_keys:
+        cl = "; ".join(f"`{c}` ({len(rs)})" for c, rs in sorted(key_classes[k].items(), key=lambda x: -len(x[1])))
+        w(f"| `{k}` | {cl or '✗ none'} | {', '.join(sorted(key_ptypes.get(k, ())))} | {used_keys.get(k, 0)} | "
+          f"{code(sword_key_files.get(k, ()), 6)} |")
+    w("")
+
+    # --- 7. anomalies
+    w("## 7. Anomaly report\n")
+    w("### 7.1 Interfaces with 0 or 1 implementers\n")
+    w("| Interface | Direct | Transitive | Extended by |\n|---|---|---|---|")
+    for i in sorted(ifaces):
+        if len(direct_impl.get(i, ())) <= 1:
+            w(f"| `{i}` | {code(direct_impl.get(i, ()))} | {code(trans_impl.get(i, ()), 8)} | {code(ext_by.get(i, ()))} |")
+    w("")
+    w("### 7.2 Validator rules A / B (expected empty: sparkcheck and the sim reject these)\n")
+    viol = []
+    for n, e in sorted(classes.items()):
+        ch, _ = chain(n)
+        if not e.abstract:
+            decl = {}
+            for c in reversed(ch):
+                decl.update(classes[c].declared)
+            for i in sorted(all_ifs[n]):
+                for m in sorted(ifaces[i].declared):
+                    if decl.get(m, True):
+                        viol.append(f"A: `{n}` does not re-declare `{m}` from `{i}`")
+        for m in sorted(set(e.methods) - set(e.declared) - LUA_SPECIAL):
+            viol.append(f"B: `{n}.lua` defines undeclared `{m}`")
+        for m, ab in sorted(e.declared.items()):
+            if not ab and m not in e.methods:
+                viol.append(f"B: `{n}` declares `{m}` but its `.lua` does not define it")
+        if e.ctor != ("__init" in e.methods):
+            viol.append(f"B: `{n}` `<constructor>` {'without' if e.ctor else 'missing for'} `__init`")
+    w("\n".join(f"- {v}" for v in viol) if viol else "- none")
+    w("")
+    w("### 7.3 World-class methods never called by name\n")
+    w("No `:name(` call in this model's Lua or sw.sword integration Lua. Kernel C++ or runtime-built names may still "
+      "call them; hooks called by directai (`__init`, `__daihash`, …) are excluded.\n")
+    nev = defaultdict(list)
+    only_sword = defaultdict(list)
+    for n, e in world.items():
+        for m in e.methods:
+            if m in LUA_SPECIAL:
+                continue
+            if not callers[m]:
+                nev[m].append(n)
+            elif not callers[m].get("model"):
+                only_sword[m].append(n)
+    w(f"{len(nev)} names: " + "; ".join(f"`{m}` ({code(v)})" for m, v in sorted(nev.items())) + "\n")
+    w("### 7.4 World-class methods called only from sw.sword integration Lua\n")
+    w((f"{len(only_sword)} names: " + "; ".join(f"`{m}` ({code(v)}; sword: {code(callers[m]['sword'], 3)})"
+                                                for m, v in sorted(only_sword.items()))) + "\n")
+    w("### 7.5 Same method in unrelated world classes\n")
+    w("Same method name implemented in ≥ 2 world classes that share no ancestor class or interface declaring it "
+      "(groups = classes that do share one). Candidates for an interface or a common base class, or plain name clashes.\n")
+    impl_by = defaultdict(set)
+    for n, e in world.items():
+        for m in e.methods:
+            if m not in LUA_SPECIAL:
+                impl_by[m].add(n)
+    rows = []
+    for m, cs in sorted(impl_by.items()):
+        if len(cs) < 2:
+            continue
+        origin = {}
+        for c in cs:
+            o = {a for a in chain(c)[0] if m in classes[a].declared} | {i for i in all_ifs[c] if m in ifaces[i].declared}
+            origin[c] = o
+        groups = []  # union classes sharing an origin
+        for c in sorted(cs):
+            hit = [g for g in groups if any(origin[c] & origin[x] for x in g)]
+            merged = {c}.union(*hit) if hit else {c}
+            groups = [g for g in groups if g not in hit] + [merged]
+        if len(groups) > 1:
+            rows.append((m, groups))
+    w(f"{len(rows)} names.\n")
+    w("| Method | Groups |\n|---|---|")
+    for m, groups in rows:
+        w(f"| `{m}` | " + " / ".join(code(g, 6) for g in sorted(groups, key=lambda g: (-len(g), sorted(g)))) + " |")
+    w("")
+    w("### 7.6 Ontology keys\n")
+    for k in sorted(used_keys):
+        cls = {c for c in key_classes.get(k, {}) if not c.startswith("sparkle.")}
+        if not cls:
+            where = "in sw.sword `ontologyKeys`, so `sparkle.Object` (no model methods)" if k in sw["keys"] else \
+                "**in no role map and not in `ontologyKeys`: nil type**"
+            w(f"- `{k}`: used {used_keys[k]}× in model Lua ({code(key_users[k], 5)}), {where}")
+    for k in sorted(sword_key_files):
+        if k not in sw["keys"] and not any(c for c in key_classes.get(k, {}) if not c.startswith("sparkle.")):
+            w(f"- `{k}`: read by sw.sword {code(sword_key_files[k])}, in no role map and not in `ontologyKeys` (nil)")
+    w("")
+    w("### 7.7 Inheritance depth (world classes, depth ≥ 4)\n")
+    w(", ".join(f"`{n}` ({len(chain(n)[0])})" for n in sorted(world, key=lambda x: (-len(chain(x)[0]), x))
+                if len(chain(n)[0]) >= 4) + "\n")
+
+    with open(os.path.join(out, "ontology_index.md"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(L))
+    return {"class (world)": len(world), "class (metadata)": len(meta), "interface": len(ifaces), "role": len(roles),
+            "rule violations": len(viol), "never called": len(nev)}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("repo")
     ap.add_argument("out")
     ap.add_argument("--model", default="ada")
     ap.add_argument("--only", default="decisional,ontology,actions")
+    ap.add_argument("--sword", default="C:/MASARepo/sw.sword", help="sw.sword checkout (integration Lua, functorsBM)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     only = set(a.only.split(","))
     if "decisional" in only:
         counts, dbs = build_decisional(a.repo, a.model, a.out)
         print("decisional:", dict(counts), "| DBs:", ", ".join(f"{d['name']} ({len(d['missions'])} missions)" for d in dbs))
-    for name in ("ontology", "actions"):
-        if name in only:
-            print(f"{name}: not implemented yet (phase {'B' if name == 'ontology' else 'C'})")
+    if "ontology" in only:
+        print("ontology:", build_ontology(a.repo, a.model, a.out, a.sword if os.path.isdir(a.sword) else None))
+    if "actions" in only:
+        print("actions: not implemented yet (phase C)")
 
 
 if __name__ == "__main__":

@@ -120,7 +120,7 @@ Read on sw.models `test_DrawingTemplates` @ `e10c2a1336`. Paths below are relati
 ## § B. Ontology survey (step 8, 2026-11-05)
 
 Read on sw.models `test_DrawingTemplates` @ `e10c2a1336`; paths relative to `decisional/dia5/`. Prototype scanner:
-`docs/sw.models/_onto_proto.py <dia5 dir>` (fold into `tools/build_models_index.py`, then delete it in step 9).
+folded into `tools/build_models_index.py` (`lua_class_methods`, `build_ontology`) in step 9.
 
 ### Declarations (XML)
 - Root `<class name abstract?>`: one `<extends>` max (0 multi), many `<implements>`, optional `<constructor>` with
