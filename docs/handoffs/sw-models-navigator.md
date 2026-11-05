@@ -144,10 +144,19 @@ on top of the decisional index.
 
 ## Decisions
 _(filled in at step 1; a resumed session must not ask again)_
-- Scope:
-- Change proposals:
-- Agent / skill names:
-- Validation questions:
+- Scope: **sw.models only** (user chose this over "soult-ready"). Generators need not run on sw.soult; drop the
+  sw.models / sw.soult duplicate-method check from the ontology anomaly report. sw.soult may still be named as
+  "out of scope, not indexed".
+- Change proposals: **proposals only** (diffs + placement/impact checklist), never edits.
+- Agent / skill names: `sw-models-navigator` + `/models`.
+- Validation questions (drafted by Claude at the user's request; user may amend before step 7):
+  1. "Is there already a skill that makes a unit mount onto / dismount from its transport, and which tasks use it?"
+  2. "When an agent gets the mission whose `dia-behavior` is `military.agent.tasks.AttackObjective`, which task and
+     which skills run, which roles allow it, and does it react to frag orders?"
+  3. "How is a mechanized infantry unit type composed in the physical DB (equipments, sensors, resources) and which
+     decisional model / role does it get?"
+  4. "What breaks if I rename the `military.agent.tasks.Reconnoitre` task: callers, `Missions.xml` wiring,
+     translations, repo checks?"
 
 ## Steps
 
@@ -157,7 +166,7 @@ _(filled in at step 1; a resumed session must not ask again)_
   - Note the sw.models branch and commit, the model dirs (`ls data/data/models`), and whether `C:\MASARepo\sw.soult` exists.
   - If `git status` shows someone else's uncommitted work in forge (e.g. the directai kit), ask the user before going on.
   - *Done when:* the log has the branch, commit and model dirs.
-- [ ] **1. Decisions.** Ask the user, in one AskUserQuestion:
+- [x] **1. Decisions.** Ask the user, in one AskUserQuestion:
   - **Scope:** sw.models only, or sw.models + sw.soult? Recommended: sw.models now, with a generator that also runs on sw.soult.
   - **Change proposals:** may the agent draft model changes as proposals? Recommended: proposals only, never edits.
   - **Names:** proposed `sw-models-navigator` and `/models`.
@@ -256,4 +265,7 @@ _(one entry per finished step: date, step, what was produced, what the next step
 - 2026-11-05, step 0: sw.models on `test_DrawingTemplates` @ `e10c2a1336` (2026-11-03, clean tree); `data/data/models` =
   `ada/` + `decfunctions.txt` only. sw.soult exists, on `NavySmallUpdates`, model dir `sws/`. Forge clean apart from
   this handoff. Templates read (sw-sword-navigator agent, sw.sword THEMES/README, check_themes.py, build_dec_index.py, /sword skill).
+- 2026-11-05, step 1: Decisions filled (sw.models only, proposals only, `sw-models-navigator` + `/models`, 4 drafted
+  validation questions). Note: action dirs are `common/agent/behaviors/skills/actions`, `military/agent/skills/actions`,
+  `navy/agent/skills/actions`, `crowd/behaviors/skills/actions`, `common/commander/behaviors/skills/actions`; 372 `dia-behavior` in Missions.xml.
 
