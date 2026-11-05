@@ -291,4 +291,10 @@ _(one entry per finished step: date, step, what was produced, what the next step
   Citations checked: Mount/Dismount XML resources, Monitor.xml behavior, FragOrder.lua stopTask pairs, MeKnowledge.lua
   `mountStarted`, security frago XML. Real bug found: `security.agent.behaviors.frago.Dismount` runs `actions.Mount`.
   Map updates applied: row split (own vehicles / carried), vocabulary gotcha, bug gotcha. Checker 638 refs, 0 problems.
+- 2026-11-05, step 7 Q2 (AttackObjective wiring): **pass**, ~23 tool calls. Task, stage, skills, queries, commander
+  issuer (`<string>` in `military.commander.skills.missions.Attack`), 7 mildb / 9 wwt models, per-model frag orders and
+  how each acts (WaitThere task, polled Infiltrate / CrossDepartureLine). Citations checked: PhaseLine.lua,
+  MoveAndTakePosition.lua, Attack.xml string, Default.xml links, Models.xml per-mission fragorders. Applied: 2 frag-order
+  gotchas, Frag orders row words + ReactToCoordinationLine; generator now adds a per-mission "Frag orders" column
+  (union over models, with counts; matches the agent's manual awk). Agent's ARCHITECTURE.md line marked branch-specific.
 

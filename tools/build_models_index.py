@@ -218,6 +218,8 @@ def scan_physical(model_dir):
                     d["models"].append({
                         "section": section.tag, "name": m.get("name"), "role": m.get("dia-type"), "file": m.get("file"),
                         "missions": [x.get("name") for x in (missions if missions is not None else [])],
+                        "mission_frags": {x.get("name"): [f.get("name") for f in x.findall("fragorder")]
+                                          for x in (missions if missions is not None else [])},
                         "fragorders": [x.get("name") for x in (frags if frags is not None else [])],
                     })
         for key, counter, tag in (("units", "units_per_model", "unit"), ("automats", "automats_per_model", "automat")):
@@ -288,6 +290,7 @@ def build_decisional(repo, model, out):
                     task_missions[m[attr]].append((d["name"], m["section"], m["name"], attr))
     mission_roles = defaultdict(lambda: defaultdict(set))  # db -> mission name -> roles
     mission_models = defaultdict(Counter)  # db -> mission name -> #models
+    mission_frags = defaultdict(lambda: defaultdict(Counter))  # db -> mission name -> frag order name -> #models
     role_models = defaultdict(list)  # role -> [(db, model name)]
     for d in dbs:
         for mo in d["models"]:
@@ -295,6 +298,8 @@ def build_decisional(repo, model, out):
             for mn in mo["missions"]:
                 mission_roles[d["name"]][mn].add(mo["role"])
                 mission_models[d["name"]][mn] += 1
+                for fname in mo["mission_frags"].get(mn, ()):
+                    mission_frags[d["name"]][mn][fname] += 1
     frag_starts = defaultdict(set)  # task -> frag dia-types that start it
     for dt, ts in frag["init"].items():
         for t in ts:
@@ -434,9 +439,12 @@ def build_decisional(repo, model, out):
     for d in dbs:
         w(f"## 7.{d['name']} Missions in `physical/{d['name']}`\n")
         w("Task ✗ = no task with that name in this model's dia5 (e.g. `taskgroup.*` lives in the `taskgroups` submodule). "
-          "Params = non-context `dia-name`s. Roles = `dia-type` of the `Models.xml` models offering the mission.\n")
-        w("| DB | Mission | Section | id | Behavior → task | dia-type (if different) | Params | Models | Roles |")
-        w("|---|---|---|---|---|---|---|---|---|")
+          "Params = non-context `dia-name`s. Roles = `dia-type` of the `Models.xml` models offering the mission. "
+          "Frag orders = `<fragorder>` children of this mission in those models, with the number of models listing "
+          "each (model-level frag orders available without a mission are not included). Many frag orders start no task "
+          "and are polled by skills instead (see THEMES gotchas).\n")
+        w("| DB | Mission | Section | id | Behavior → task | dia-type (if different) | Params | Models | Roles | Frag orders |")
+        w("|---|---|---|---|---|---|---|---|---|---|")
         for m in sorted(d["missions"], key=lambda x: (x["section"], x["name"])):
             beh = []
             for attr, tag in (("dia-behavior", ""), ("mrt-dia-behavior", "MRT "), ("cdt-dia-behavior", "CDT ")):
@@ -448,7 +456,9 @@ def build_decisional(repo, model, out):
             same = dt in (m.get("dia-behavior"), m.get("mrt-dia-behavior"))
             w(f"| {d['name']} | \"{m['name']}\" | {m['section']} | {m.get('id', '')} | {'; '.join(beh)} | {'' if same else '`' + dt + '`'} | "
               f"{', '.join(m['params'])} | {mission_models[d['name']].get(m['name'], 0)} | "
-              f"{code(mission_roles[d['name']].get(m['name'], ()))} |")
+              f"{code(mission_roles[d['name']].get(m['name'], ()))} | "
+              + ", ".join(f"\"{f}\" ({c})" for f, c in sorted(mission_frags[d['name']].get(m['name'], {}).items()))
+              + " |")
         w("")
         w(f"### Decisional models in `physical/{d['name']}/Models.xml`\n")
         w("| DB | Model | Section | Role (dia-type) | Brain file | Missions | Frag orders (model-level) | Unit/automat types using it |")

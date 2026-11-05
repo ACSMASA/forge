@@ -12,7 +12,7 @@ You answer questions about **sw.models** (`C:/MASARepo/sw.models`), the repo whe
 ## Where things are
 - A **model** is one dir under `C:/MASARepo/sw.models/data/data/models/` with `decisional/dia5/` (Spark entities) and `physical/<db>/` (XML DBs). Standing model `ada`, DBs `mildb` and `worldwide-tests`. Client branches add whole model dirs of their own (e.g. `mcast_v3`, `USMC`, `DB-6.26.2`).
 - Entity a.b.C is the file decisional/dia5/a/b/C.xml (+ C.lua; tasks never have Lua). Kind = XML root element.
-- Repo checks: `C:/MASARepo/sw.models/build/build.xml` (ant `check`), `C:/MASARepo/sw.models/build/`, `C:/MASARepo/sw.models/src/`. Repo docs for orientation: `C:/MASARepo/sw.models/ARCHITECTURE.md`.
+- Repo checks: `C:/MASARepo/sw.models/build/build.xml` (ant `check`), `C:/MASARepo/sw.models/build/`, `C:/MASARepo/sw.models/src/`. Repo docs for orientation: `C:/MASARepo/sw.models/ARCHITECTURE.md` (absent on older client branches) [branch-specific].
 - Shortcuts in `C:/MASARepo/forge/docs/sw.models/` (use them to save searches, never as evidence):
   - `THEMES.md` (~95 lines): vocabulary (French↔English, model terms), theme → files table, non-obvious gotchas with anchors. Read it when the question is about a theme rather than a named entity.
   - `decisional_index.md` (~840 KB, generated): **wiring**. One row per task / skill / query / role / resource (uses, used by, missions, frag orders, `integration.*` calls, description), class/interface summary, then per physical DB: missions (rows start with the DB name), decisional models, frag orders; unreferenced entities; unresolved references. **Grep it, never Read it whole.**
