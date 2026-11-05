@@ -183,7 +183,7 @@ _(filled in at step 1; a resumed session must not ask again)_
   - Read `src/models/decdb.go`, the repo's README and ARCHITECTURE, and the user's notes (verify against the files).
   - Output: `_build_notes.md` § A.
   - *Done when:* the notes give the exact file patterns and regexes the generator needs.
-- [ ] **3. Generator: decisional index.**
+- [x] **3. Generator: decisional index.**
   - Write `tools/build_models_index.py`, structured for three outputs (one per index), and implement the decisional one → `docs/sw.models/decisional_index.md`. Its header gives branch and commit.
   - *Done when:*
     - it runs on ada in about a minute or less
@@ -271,4 +271,9 @@ _(one entry per finished step: date, step, what was produced, what the next step
 - 2026-11-05, step 2: `docs/sw.models/_build_notes.md` § A. Entity name = path; classify by XML root (562 skills,
   523 tasks, 134 queries, 173 classes, 36 interfaces, 32 roles, 25 resources). Tasks have no `.lua`. Two physical DBs
   in ada (`mildb`, `worldwide-tests`), client branches add whole model dirs. Regexes for step 3 are in the notes.
+- 2026-11-05, step 3: `tools/build_models_index.py <repo> <outdir> [--model] [--only]` → `docs/sw.models/decisional_index.md`
+  (837 KB, 1.4 s). Sections: tasks, skills, queries, roles, resources, classes/interfaces summary, missions / models /
+  frag orders per DB (rows start with the DB name), top-level Lua, unreferenced entities (27 tasks, 27 skills, 26 queries,
+  2 roles; sampled ones confirmed by grep), unresolved refs (the 2 ByPass case mismatches). Counts match the step-2 grep;
+  139/139 frag initializers parsed. `ontology` / `actions` are stubs printing "not implemented".
 
