@@ -102,7 +102,10 @@ UpdateKnowledgeGroups(); HandleDeletedEntities()
 
 Consequences:
 
-- Brains see knowledge built from **this tick's** perceptions.
+- Brains see knowledge built from this tick's perception pass, which uses positions from the **end of the previous tick**: movement is committed in
+  `UpdateEffects` by `MIL_Effect_Move` → `DEC_PathWalker::Apply` (`Entities/Effects/MIL_Effect_Move.cpp:30`, `Decision/DEC_PathWalker.cpp:765-768`).
+  So a unit that enters sensor range during tick N is known to brains at N+1 at the earliest (later outside the sensor sector: see the
+  agents/physics section §5.2). Exception: magic moves/teleports are applied between ticks, so they are perceived in the same tick.
 - Actions started by a brain this tick execute in the same tick's `UpdateActions`.
 - Effects (damage) are applied after all actions.
 

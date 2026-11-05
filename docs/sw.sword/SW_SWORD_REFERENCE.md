@@ -141,6 +141,9 @@ against the sw.sword root, marks inferred claims "(unverified)", and lists gaps 
 - ✔ **Bug**: `DECFunctionWrappers.lua:1758` `local objects = DEC_Knowledge_GetObjects` (missing `( myself )`) → `DEC_Connaissances_Observable` breaks when called (no callers found in sw.models).
 - ✔ `Integration.lua:71` and `:89` both include `RelievableIntegration.lua` (harmless). `integration/config.ld` (LDoc) is out of date.
 - `integration/Reports.lua` is generated and gitignored; any `eRC_` token in integration (even in comments) is checked against Reports.xml by `ant checkreports`.
+- ✔ There is **no `integration.isLoaded`**. Model objects' `self:isLoaded()` means *transported by another unit* (`_DEC_Agent_EstTransporte`); "mounted in its own vehicles"
+  is `integration.agentIsMounted()` (`EquipmentIntegration.lua:829`). `agentIsMounted` and `agentIsDismounted` are **both false** while mounting/dismounting
+  (`Actions/Loading/PHY_RoleAction_Loading.cpp:228-236`), so `not agentIsMounted()` ≠ dismounted.
 - `integration.displayReport` drops reports with too few params (trace warning only) and returns silently on a nil param.
 - `NIL` (MASA Life sentinel) ≠ `nil`; check both for optional parameters.
 - Tests: `ant checkintegration` (lunit) only covers `utilities.*` (26 tests). Nothing touching DEC functions or Spark is unit-tested → breakages surface at runtime.
@@ -161,7 +164,9 @@ against the sw.sword root, marks inferred claims "(unverified)", and lists gaps 
 - Any Lua reference to a deleted unit keeps it alive as a zombie (`DEC_Decision_ABC*` is refcounted). Raw `TER_Localisation*`/`MT_Vector2D*` returns can dangle.
 - ✔ Checkpoints don't save the Lua VM: only what `integration.savePersistentState` returns (`Brain.cpp:127`, `SimulationIntegration.lua:679`), plain data only; missions restart on reload.
 
-**Timing (one tick)** — perception & knowledge → decisions (automats, pions, crowds, task groups) → actions → effects → states/network → knowledge groups → meteo → resource networks → pathfinder. So Lua sees the previous tick's perception; actions it starts run later in the same tick. Orders/magic actions apply between ticks.
+**Timing (one tick)** — perception & knowledge → decisions (automats, pions, crowds, task groups) → actions → effects → states/network → knowledge groups → meteo → resource networks → pathfinder. So Lua sees this tick's perception pass, but computed on positions from the end of the previous tick: movement is committed in
+`UpdateEffects` (`MIL_Effect_Move.cpp:30` → `DEC_PathWalker::Apply`). A unit entering sensor range during tick N is known to brains at **N+1 at the earliest**
+(later if outside the sensor sector: see §5 perception). Actions Lua starts run later in the same tick. Orders/magic actions apply between ticks.
 
 **Knowledge**
 - Knowledge belongs to the **knowledge group**, not the agent; ids differ per group; a re-seen unit after deletion gets a **new** knowledge id → old Lua handles stay invalid. Jamming moves a pion to a cloned KG with new ids.
@@ -218,7 +223,7 @@ grep -rn '"DEC_Agent_EstEmbarque"' sw.sword/src/libraries/simulation
 # all integration functions defined in a file
 grep -nE '^ *integration\.[A-Za-z_]+ *= *function' sw.sword/data/app-data/resources/integration/LoadableIntegration.lua
 # who in the models uses an integration function
-grep -rn 'integration.isLoaded' sw.models/data/data/models --include=*.lua | head
+grep -rn 'integration.agentIsMounted' sw.models/data/data/models --include=*.lua | head
 # history of one integration file
 git -C sw.sword log --oneline -15 -- data/app-data/resources/integration/EquipmentIntegration.lua
 ```
@@ -234,6 +239,8 @@ git -C sw.sword log --oneline -15 -- data/app-data/resources/integration/Equipme
 | `docs/sw.sword/sections/*.md` | 5 deep dives (~2,800 lines total), file:line cited |
 | `docs/sw.sword/dec_function_index.md` | generated index of all 1,616 brain names |
 | `tools/build_dec_index.py` | regenerates the index |
+| `.claude/agents/sw-sword-navigator.md` | the navigator (built 2026-11-05 from §9.2; read-only, self-contained routing, reports "Doc updates" instead of writing) |
+| `.claude/skills/sword/SKILL.md` | `/sword <question>` → forks into the navigator |
 
 **How it was produced:** the main session verified the seam (§2) and the generator; five parallel readers wrote the sections under a
 budget cut at ~2/3 of their exploration. The main session spot-checked ~15 claims (marked ✔ above): all held except one stale claim
@@ -261,7 +268,8 @@ live in `C:\MASARepo\directai`); per-action return-code enums; protobuf messages
    - Return format for calling agents: short answer first, then evidence (file:line), then caveats/unknowns.
 3. **Optional** user-invocable skill (e.g. `/sword <question>`) that just delegates to the subagent; and a memory/notes file in forge
    where the navigator appends verified findings that fill the §9.1 gaps (so the docs improve with use).
-4. **Validate** with 6–8 real questions before declaring done, e.g.: "What does `integration.isLoaded` check and which C++ does it hit?",
+4. **Validate** with 6–8 real questions before declaring done, e.g.: "What does `integration.isLoaded` check and which C++ does it hit?"
+   (trick question, as it turned out: no such function exists — see the Integration-layer gotchas),
    "Why might a frag order never reach my pion's skill?", "Which XML field controls detection range for an optical sensor and in what unit?",
    "Propose adding `integration.getRemainingFuel()`", "In which tick phase are knowledges updated relative to my skill's `activate`?",
    "Why would an object my unit destroyed still block its path?". Check citations resolve.
