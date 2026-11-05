@@ -368,7 +368,7 @@ Path aliases:
 
   `--task T` walks stages → behaviors → links, reusing the link resolution in `tools/build_models_index.py`.
   Validate on the known fragile and known-safe cases (Context); tune false positives.
-- [ ] **7. `docs/sw.models/mission_index.md`.**
+- [x] **7. `docs/sw.models/mission_index.md`.**
   - Built by `tools/build_models_index.py --only missions`, reusing `scan_decisional`, `scan_physical`,
     `repo_stamp` and `scan_sword`.
   - §1 Parameter-type catalog: Missions.xml type → converter and list support → ontology key / world class → task
@@ -447,3 +447,7 @@ Path aliases:
   classes (abstract LocalizedElement was a false positive), fields set in create/start/select/started not "lost",
   reports split from world side effects, default-task skills exempt from no-clear. `--all`: side-effect 7,
   key-order 16 (incl. MoveAlong and Default: the "known-safe" skills are exposed to the pairs-order hazard).
+- 2026-11-05 step 7: `mission_index.md` (§1 53 types, §2 533 mission rows with mission_check status, §3 562 skills with
+  state keys + lint counts, §4 queries, §5 33 anomalies), `build_models_index.py --only missions` (now in the default
+  `--only`), registered in `kits.py` and the kit README; sw-models-navigator shortcut + context-check grep. Also
+  committed: mission_check UTF-8 output, `.gitignore` for `__pycache__/`. Next: step 8 in a fresh session.

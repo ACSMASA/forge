@@ -157,6 +157,17 @@ def skill_param_types(xml_text):
     return out
 
 
+def persisted_keys(code):
+    """(uses skill state?, keys read or written in it, aliases of getSkillState( self )) from comment-free Lua."""
+    uses_state = bool(STATE_CALL.search(code))
+    aliases = set(re.findall(r"\b(\w+)\s*=\s*(?:scripts|integration)\.getSkillState\s*\(\s*self\s*\)", code))
+    keys = set(re.findall(r"(?:setSkillStateElement|setSkillStatePointElement|getSkillStatePointElement)\s*\(\s*self\s*,\s*[\"'](\w+)[\"']", code))
+    keys |= set(re.findall(r"getSkillState\s*\(\s*self\s*\)\s*\.\s*(\w+)", code))
+    for a in aliases:
+        keys |= set(re.findall(rf"\b{re.escape(a)}\s*\.\s*(\w+)", code))
+    return uses_state, keys, aliases
+
+
 def lint_skill(path, xml_text, hashes, rules, model_root, keep_state=frozenset()):
     """Return [(rule, file, line, message)] for one skill Lua file."""
     src = read(path)
@@ -169,12 +180,7 @@ def lint_skill(path, xml_text, hashes, rules, model_root, keep_state=frozenset()
         if rule in rules:
             out.append((rule, rel, lineno(pos_text, pos), msg))
 
-    uses_state = bool(STATE_CALL.search(code))
-    aliases = set(re.findall(r"\b(\w+)\s*=\s*(?:scripts|integration)\.getSkillState\s*\(\s*self\s*\)", code))
-    keys = set(re.findall(r"(?:setSkillStateElement|setSkillStatePointElement|getSkillStatePointElement)\s*\(\s*self\s*,\s*[\"'](\w+)[\"']", code))
-    keys |= set(re.findall(r"getSkillState\s*\(\s*self\s*\)\s*\.\s*(\w+)", code))
-    for a in aliases:
-        keys |= set(re.findall(rf"\b{re.escape(a)}\s*\.\s*(\w+)", code))
+    uses_state, keys, aliases = persisted_keys(code)
     writes_state = bool(re.search(r"setSkillState(?:Element|PointElement)?\s*\(", code)) or any(
         re.search(rf"\b{re.escape(a)}\s*\.\s*\w+\s*=(?!=)", code) for a in aliases) or bool(
         re.search(r"getSkillState\s*\(\s*self\s*\)\s*\.\s*\w+\s*=(?!=)", code))

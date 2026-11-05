@@ -32,6 +32,7 @@ INDEXES = [
     ("docs/sw.models/decisional_index.md", ["sw.models"], "models"),
     ("docs/sw.models/ontology_index.md", ["sw.models", "sw.sword"], "models"),
     ("docs/sw.models/action_index.md", ["sw.models", "sw.sword"], "models"),
+    ("docs/sw.models/mission_index.md", ["sw.models", "sw.sword"], "models"),
 ]
 PAIR = re.compile(r"`([^`\s]+)`\**\s*@\s*`([0-9a-f]{7,})`")
 MODEL = re.compile(r"model `([^`]+)`")
