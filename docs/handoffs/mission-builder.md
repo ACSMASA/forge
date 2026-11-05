@@ -306,7 +306,7 @@ Path aliases:
     sim-side and a Lua-side fix.
 
   *Done when:* each question has an answer with a file:line, or is marked "unknown, ask the user".
-- [ ] **2. `docs/sw.models/MISSIONS.md`.**
+- [x] **2. `docs/sw.models/MISSIONS.md`.**
   - Anatomy table: file → element / field → rule → `path::anchor`, per DB.
   - One-line anchored rules: context block, types and converters, binding, optional ↔ nullable/default, ending,
     stages, parallel stage, lets / queries / `once`, default-task concurrency and resources, modifiers, metadata
@@ -426,3 +426,6 @@ Path aliases:
 - 2026-11-05 step 1 (same 3 commits): answers in `_mission_notes.md` §1. Append missions at end of `<units>`; Stages,
   .ts sorted ordinal; ids = max over both DBs + 1; absent optional → task `<default>`; `getPersistentKey` order
   unstable (Lua 5.2.4 seed); version = `build/build.xml` `version.major`. fr sheets are mildb only (Context fixed).
+- 2026-11-05 step 2: `MISSIONS.md` (anatomy, parameters, task rules, default task, checks, build order). Checker gets
+  cross-repo aliases `sim/ int/ spark/ val/` for the sw.models kit. New facts: Stages.xml must hold every dia5 label in
+  **both** DBs; a single-behavior last stage is not stage-ending unless the task is `disable-when-done`.
