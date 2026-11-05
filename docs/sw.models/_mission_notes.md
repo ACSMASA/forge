@@ -55,16 +55,19 @@ Measured with ElementTree over both DBs; "sorted" = Python ordinal sort (case-se
   the same id in every DB the mission goes to. Today: 545949904. It keeps new ids globally unique and avoids adding
   to the 42 "same id, different name" pairs. Enum `<value id>` (0, 1, 2…) are local to the parameter.
 
-### 1.4 Optional parameter absent → task `<default>`? **Yes.**
+### 1.4 Optional parameter absent → task `<default>`? **No** (corrected at step 4)
 - `sim/Decision/DEC_Decision.cpp:1424-1430`: a converter returning "not initialized" stores
-  `brain.GetScriptRef("NIL")`; `sim/Decision/Brain.cpp:96-99` = global lookup `(*brain_)["NIL"]`; no Lua file
-  defines a global `NIL` (grep over all `*.lua` in C:/MASARepo) → the value is nil. A type with no BM converter is
-  never stored → nil too.
-- `spark/parameters.lua:199-226` `createBehaviorParameterTable`: `value == nil` → `decl.default` (a query default
-  becomes an updater, recomputed by `update`). `spark/behavior.lua:159-164` returns the full set;
-  `int/SimulationIntegration.lua:472` keeps it in `myself.taskParamsWithDefault`.
-- Consequence: an optional mission parameter should have a task `<default>` or a `nullable` declaration; otherwise
-  the task gets nil (warning only with `--dec-typecheck`).
+  `brain.GetScriptRef("NIL")`; `sim/Decision/Brain.cpp:96-99` = global lookup `(*brain_)["NIL"]`; `NIL` is a
+  **shared global sentinel table**, `spark/compatibility.lua:13` `setsharedglobal( "NIL", setmetatable( {}, … ) )`
+  (step 1 missed it: it is defined with `setsharedglobal`, not `NIL =`).
+- `spark/parameters.lua:199-226` `createBehaviorParameterTable` applies `decl.default` only when `value == nil`, so a
+  `NIL` value **skips the default**; `spark/parameters.lua:156-157` warns (type checking only) when `NIL` reaches a
+  non-`nullable` parameter.
+- A type with **no BM converter** is never stored → plain nil → the default **is** applied.
+- Consequence: an optional mission parameter (with a converter) needs `nullable="true"` on the task parameter, and
+  skills must test `~= NIL` (models: 206 `==/~= NIL` tests in dia5 Lua, 302 XML files use `<NIL/>`). A `<default>` on
+  it is dead for mission starts (still used when the task is started from Lua without that key).
+- Checkpoint side: `NIL` persisted in a skill state serializes as `{}` and reloads as an empty table, not `NIL`.
 
 ### 1.5 Lua string hash and `pairs` order
 - directai links a **prebuilt Lua 5.2.4** (`directai/include/lua/lua.h:18-22`, `directai/build/CMakeLists.txt:54`

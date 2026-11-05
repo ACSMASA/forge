@@ -119,7 +119,8 @@ Path aliases:
   - Extras are dropped (`spark/behavior.lua` schedule copies only the declared names).
   - A task parameter with no counterpart gets its `<default>`, otherwise nil.
   - Warnings only appear with `--dec-typecheck`.
-  - An absent optional parameter arrives as `NIL` (`DEC_Decision.cpp`).
+  - An absent optional parameter arrives as `NIL` (`DEC_Decision.cpp`), a shared sentinel table
+    (`spark/compatibility.lua`), so the task `<default>` is skipped (it applies to nil only).
   - Order-time validation (`sim/Entities/Orders/MIL_Mission_ABC.cpp` `FillParameters`, by position after the
     context): missing non-optional, min/max-occurs, `IsOfType`, invalid geometry.
 - **Ids:** mildb max unit id 445949727, file max 445949729; wwt max 545949903. The 5459xxxxx range is wwt-only.
@@ -327,7 +328,7 @@ Path aliases:
   - Add a gotcha line pointing to the file in `docs/sw.sword/THEMES.md` and `docs/directai/THEMES.md`, and a THEMES
     sw.models row "Checkpoints (save / resume)".
   - Add the file to the checker. The checker passes.
-- [ ] **4. Cross-links.**
+- [x] **4. Cross-links.**
   - CLAUDE.md pipeline rows "Unit mission: anatomy / build / check" and "Checkpoint safety of a behavior", pointing to
     the two files (and, later, the tools).
   - sw-models-navigator: "Mission question", step 7 and "Change proposals" point to `MISSIONS.md` /
@@ -424,7 +425,7 @@ Path aliases:
 - 2026-11-05 step 0: handoff written from the approved plan (exploration of sw.models, directai, sw.sword missions
   and checkpoints done in the planning session; facts in **Context**).
 - 2026-11-05 step 1 (same 3 commits): answers in `_mission_notes.md` §1. Append missions at end of `<units>`; Stages,
-  .ts sorted ordinal; ids = max over both DBs + 1; absent optional → task `<default>`; `getPersistentKey` order
+  .ts sorted ordinal; ids = max over both DBs + 1; absent optional → `NIL` sentinel, default skipped (corrected at step 4); `getPersistentKey` order
   unstable (Lua 5.2.4 seed); version = `build/build.xml` `version.major`. fr sheets are mildb only (Context fixed).
 - 2026-11-05 step 2: `MISSIONS.md` (anatomy, parameters, task rules, default task, checks, build order). Checker gets
   cross-repo aliases `sim/ int/ spark/ val/` for the sw.models kit. New facts: Stages.xml must hold every dia5 label in
@@ -432,3 +433,6 @@ Path aliases:
 - 2026-11-05 step 3: `CHECKPOINTS.md` (saved/lost table, resume hops, 14 hazards, conventions, test recipe, 7 sim-side
   gaps with blast-radius recipe and version-freeze rule). Gotcha lines in sw.sword / directai THEMES, sw.models THEMES
   row. New: `seqStage` tables are per behavior index, shared across sequential stages; actions use the sim id space.
+- 2026-11-05 step 4: CLAUDE.md rows, sw-models-navigator (shortcuts, step 3, new step 9 checkpoint safety, proposals
+  step 4), one line in sw-sword / dai navigators, THEMES mission row. **Correction**: `NIL` is a shared sentinel
+  (`spark/compatibility.lua`), so an absent optional parameter skips the task `<default>` (notes §1.4, MISSIONS §2).

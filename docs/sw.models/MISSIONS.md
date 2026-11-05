@@ -54,12 +54,14 @@ at sw.sword build time); no generator exists besides `tools/mission_scaffold.py`
   each type with its converter and Spark type.
 - **Binding is by name**: `dia-name` = the task `<parameter name>`; undeclared names are dropped:
   `spark/behavior.lua::res[ name ] = parameters[ name ]`.
-- **Absent value → task `<default>`**: an optional parameter not given (or a type with no converter) arrives as nil
-  (`sim/Decision/DEC_Decision.cpp::refMission_[ dianame ] = brain_.GetScriptRef( "NIL" );`, no Lua global `NIL`),
-  then Spark applies `<default>`: `spark/parameters.lua::if decl.default then`. No default and not `nullable` → the
-  task gets nil; reported only with `--dec-typecheck`.
-- **optional ↔ nullable/default**: `optional="true"` needs a task `<default>` or `nullable="true"`;
-  `optional="false"` is enforced at order time (missing value, min/max-occurs, `IsOfType`, invalid geometry), by
+- **Absent optional value → `NIL`, not the `<default>`**: an optional parameter not given arrives as the `NIL`
+  sentinel (a shared global table, not nil): `sim/Decision/DEC_Decision.cpp::refMission_[ dianame ] = brain_.GetScriptRef( "NIL" );`,
+  `spark/compatibility.lua::setsharedglobal( "NIL"`. Spark applies `<default>` only to nil, so the default is
+  **skipped**: `spark/parameters.lua::if value == nil then`. Only a type with no converter (never stored) gets nil and
+  thus the default. Skills test `~= NIL` (and `~= nil`).
+- **optional ↔ nullable**: `optional="true"` needs `nullable="true"` on the task parameter (else a warning with
+  `--dec-typecheck`: `spark/parameters.lua::is not declared nullable but is set to NIL`); a `<default>` on it only
+  serves Lua starts that omit the key. `optional="false"` is enforced at order time (missing value, min/max-occurs, `IsOfType`, invalid geometry), by
   position after the context: `sim/Entities/Orders/MIL_Mission_ABC.cpp::IsOfType( parameterType.GetType().GetType() )`.
 - **Lists**: `max-occurs="unbounded"` (or > 1) makes a list; the task type must be a `<list>` of the element type.
 - **Hashability** matters for checkpoints: a skill keyed by a parameter of a class without `hash` cannot persist

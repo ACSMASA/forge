@@ -39,6 +39,8 @@ and `sw.models/data/data/models/ada/physical/worldwide-tests/`; integration Lua 
 | Kernel action started / stopped | `action_index.md` §4, `integration_index.md` "Kernel starters" | `StartAction<` registration | sword |
 | `spark.*`, `sw.ai.*`, shared global; validator message | `dai_lua_index.md` §1–§3; §4 (code or message fragment) | directai spark plugin / validator | dai |
 | Physical XML attribute meaning | no index: grep `attribute( "name"` in sw.sword `src/libraries` | the C++ reader | sword |
+| Unit mission: anatomy / build / check | `docs/sw.models/MISSIONS.md` §1 files per DB, §2 parameters, §5 checks | Missions.xml, Models.xml, task XML | models |
+| Checkpoint safety of a behavior | `docs/sw.models/CHECKPOINTS.md` §3 hazards, §4 conventions, §6 sim-side gaps | the skill Lua; `integration.*State` in `SimulationIntegration.lua` | models (sim side: sword) |
 | A theme, no name yet | the kit's `THEMES.md` (FR/EN words, theme → files, gotchas) | the files of the row | kit owner |
 
 ## Grep recipes (Grep tool; rows start with a backticked name, so `.` stands for the backtick)

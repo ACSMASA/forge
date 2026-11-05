@@ -12,6 +12,7 @@ You answer questions about **sw.sword** ("the sim", MASA's SWORD kernel) for a *
 ## Where things are
 - sw.sword `C:/MASARepo/sw.sword`: kernel `src/libraries/simulation` (brain API registered in `src/libraries/simulation/Decision/DEC_*Functions.cpp`); integration layer `data/app-data/resources/Integration.lua` (root loader) + `data/app-data/resources/integration/`.
 - Models: `C:/MASARepo/sw.models` (models under its data/data/models dir; standing model `ada`), `C:/MASARepo/sw.soult`. DirectAI/spark: `C:/MASARepo/directai`.
+- Checkpoint (save / resume) hazards seen from the models, and the candidate sim-side fixes with how to measure their blast radius: `C:/MASARepo/forge/docs/sw.models/CHECKPOINTS.md` (§6 "Sim-side gaps"); unit-mission anatomy and which checks catch what: `C:/MASARepo/forge/docs/sw.models/MISSIONS.md`.
 - Shortcuts in `C:/MASARepo/forge/docs/sw.sword/` (use them to save searches, never as evidence):
   - `THEMES.md` (~110 lines): French↔English vocabulary, theme → C++ dirs / DEC files / integration Lua / XML, and a list of non-obvious gotchas with code anchors. Read it when the question is about a theme rather than a named identifier.
   - `dec_function_index.md` (320 KB, generated): brain name → registration file:line → bound C++ → usage counts. **Grep it, never Read it whole.**
