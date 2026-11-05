@@ -379,7 +379,7 @@ Path aliases:
   - §4 Query signatures.
   - §5 Anomalies.
   - Register in `tools/kits.py` `INDEXES` (repos sw.models, sw.sword) and in `docs/sw.models/README.md`.
-- [ ] **8. `tools/mission_scaffold.py`.**
+- [x] **8. `tools/mission_scaffold.py`.**
   - Input: a JSON spec with name, dia-type, task, category, params, DBs, models, stage labels + fr, and fr name.
   - Output, as normalized insertions:
     - the Missions.xml entry, with the context block and the next id
@@ -451,3 +451,6 @@ Path aliases:
   state keys + lint counts, §4 queries, §5 33 anomalies), `build_models_index.py --only missions` (now in the default
   `--only`), registered in `kits.py` and the kit README; sw-models-navigator shortcut + context-check grep. Also
   committed: mission_check UTF-8 output, `.gitignore` for `__pycache__/`. Next: step 8 in a fresh session.
+- 2026-11-05 step 8 (same 3 commits): `mission_scaffold.py` (JSON spec → Missions/Models/Stages/.ts/sheets/task skeleton;
+  diff by default, `--write` refused on master). Sheet `.html` renderer byte-exact on 780/780 (`--check-html`; rules in
+  notes §8). Scratch validation: two specs scaffolded, `mission_check` 0/0, `--all` unchanged (22/12).

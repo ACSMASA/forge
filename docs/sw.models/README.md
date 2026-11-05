@@ -13,7 +13,9 @@ The navigator answers from the **files** of `C:/MASARepo/sw.models` (DIA5 decisi
 | `MISSIONS.md`, `CHECKPOINTS.md` | unit-mission anatomy and rules; save / resume hazards, conventions, sim-side gaps | hand-written, one-line anchored rules; checked by `tools/check_themes.py` |
 
 Tools on the working tree (no index needed): `python -I tools/mission_check.py --mission "<name>"` (or `--task`,
-`--all`) and `python -I tools/checkpoint_lint.py --skill <name>` (or `--task`, `--all`).
+`--all`) and `python -I tools/checkpoint_lint.py --skill <name>` (or `--task`, `--all`). Writer:
+`python -I tools/mission_scaffold.py SPEC.json [--root <copy>] [--write]` (spec format: `--example`; prints a diff
+unless `--write`, refused on master; `--check-html` self-tests the sheet renderer against every `.html` on disk).
 
 Scope: sw.models only (model `ada` by default). sw.soult is not indexed.
 

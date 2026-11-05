@@ -94,3 +94,27 @@ Measured with ElementTree over both DBs; "sorted" = Python ordinal sort (case-se
 - directai pin: sw.sword consumes directai as a prebuilt dependency (`sw.sword/build/build.xml:1385`
   `update-gh name="directai"`); where the exact pin is recorded was not read (`.env` is off limits). Not needed by
   the builder: directai changes are out of scope.
+
+## 8. Scaffold findings (step 8)
+- **Sheet `.html` serializer** (measured, 780/780 byte-exact with `tools/mission_scaffold.py --check-html`): libxslt
+  HTML output of `phy/missionSheets.xslt`; formatting and text newlines written `\r\r\n`, newlines inside the
+  `disable-output-escaping` `<img>` text written `\r\n`; non-ASCII → HTML 4 named entities (`&eacute;`), else `&#N;`;
+  newline after a start tag when the first child is an element, except `<td>` + inline child (`b i u br img`);
+  newline before an end tag when the last child is an element; newline between sibling elements except `</td><td>`.
+  The `<img src>` folder is historical per sheet (old mission names, `./../../Images/<en name>/` in fr sheets), so the
+  self-test reads it from the existing `.html`; new sheets default to `./Images/<name>/`.
+- **Sheets:** every sheet XML root is `<mission-sheet model-version="4.8.2" name … xsi:noNamespaceSchemaLocation=
+  "schemas/6.29.0/physical/missionSheet.xsd">` (version = the DB's Missions.xml); empty sections are self-closing
+  (`<attachments/>` 667×, `<comments/>` 592×…); a parameter without text is self-closing (1914×). Context parameter
+  texts are standard (en "Expected enemy direction." 237×…, fr "Direction supposée de la menace." 236×); fr sheets
+  use translated parameter names (`unit-context` for the context, `unit - <name>` for the others).
+- **Missions.xml:** `<categories>` is unsorted (append). Parameter children seen: `objects` (1008), `choice`+`objects`
+  (584), `value`* (Enumeration), `units`, `transmitters`, `equipments`. `<objects>` is on every LocationComposite,
+  ObjectKnowledge and PlannedWork parameter (default `<objects all="true"/>`). No `&apos;` / `&quot;` in any physical
+  file or sheet.
+- **Models.xml:** `<missions/>` exists (2 models per DB); `<mission name/>` self-closing when no frag order.
+- **Validation (scratch copy of `ada`, sw.models `master` @ `d2f78fafcd`):** spec (a) reusing AttackObjective with
+  another dia-type and parameter set, spec (b) new task skeleton + new category + enum/list/boolean/distance + 2 new
+  stages: `mission_check --mission` 0/0 for both; `--all` on the copy = the same 22 errors / 12 warnings as the real
+  tree; 786/786 sheets re-render; touched XML/.ts well-formed; bad spec → 12 errors listed at once; `--write` refused
+  on a `master` checkout.
