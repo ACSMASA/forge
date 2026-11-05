@@ -89,7 +89,7 @@ Path aliases (as in `mission-builder.md`):
     only by frag orders.
   - **Entries are appended**, not sorted. Ids interleave with mission ids. The next id follows the scaffold rule: max
     over both DBs + 1, which is **545949904** today.
-  - **Ids are not consistent across DBs:** over 100 ids name different entries. 38 names are shared; 6 of them have
+  - **Ids are not consistent across DBs:** 92 ids name different entries (corrected at step 1). 38 names are shared; 6 of them have
     different ids and 6 have different parameters. 9 dia-types are shared under different names (`Infiltrate` =
     "Use infiltration path" in mildb).
   - Precedent commit `39dacf24df` added frag orders by hand. `27d2c6ee6e` fixed it: duplicate id, `.ts` order, LF
@@ -121,7 +121,9 @@ Path aliases (as in `mission-builder.md`):
     value names, **deduplicated** and ordinal-sorted. The contexts are contiguous right after `frag-order`.
   - A new category also needs a `mission-categories` message. The existing `ts_*` helpers fit unchanged.
 - **Other files:** none to write. `mappings/hla.xml` holds only the fixed pause / resume / cancel names; Reports.xml
-  does not list frag orders; Stages.xml has no frag-order entries.
+  does not list frag orders. Stages.xml has no frag-order **names**, but it holds **frago task stage labels** (e.g.
+  "destroying the target"). checkstages covers every dia5 label, so a new frago task needs Stages.xml (both DBs) +
+  `Stages_fr.ts`, like a mission task (corrected at step 1).
 - **Checks**
   - **Fatal:** duplicate ids within a DB (`src/models/phydb.go`; it never reads `<task-groups>`), and en sheet pairs
     and name ↔ sheet matching (`checkdec sheets`).
@@ -170,8 +172,20 @@ Path aliases (as in `mission-builder.md`):
 - **`dia5/FragOrder.lua` is the only registry**, `include`d from `dia5/Decisional.lua`. It holds:
   - `fragOrdersToBePropagated` (67 names);
   - `executeAutomatFragOrder` (20 automat branches, then `integration.startFragOrder` if a behavior exists);
-  - `fragOrderTaskInitializers` (141 keys);
+  - `fragOrderTaskInitializers` (141 keys; 2 use a named function, `ChangeAttitude` returns a computed task);
   - `extensionsFragosInit` (merged, the base wins).
+- **`FragOrder.lua` format** (step 1):
+  - **CRLF**, UTF-8, no BOM, 4-space indent.
+  - Initializers are **grouped by theme**, neither sorted nor appended.
+  - The propagation list is unsorted, with no trailing comma on the last entry.
+
+  Details are in `_fragorder_notes.md` §1.2 Q1.
+- **House style: kernel path (c) first.** `6db5a91523` (a review fix) removed the initializers and propagation
+  entries that `39dacf24df` had added: dia-type = the task name and dia-names = the task parameter names suffice. Use an
+  initializer only to convert or validate, stop the opposite task, or pick the task at run time.
+- **Every brain is `dia5/BMAgent.bms`** (a Spark brain over all of dia5), so an automat brain knows unit tasks. The
+  `executeAutomatFragOrder` fallback therefore starts a unit task **on the commander** when the order is not
+  propagated.
 - ✓ **`fragOrder.startFragOrderTask`** (`dia5/FragOrder.lua` 1311–1333):
   - **No initializer** → `integration.startFragOrder` + clean.
   - **Initializer:** `init(mission, fo)` returns `true[, taskName]` → clean, then `spark.getBehavior(...)`
@@ -198,7 +212,8 @@ Path aliases (as in `mission-builder.md`):
 
   - Kind (b) **needs an empty initializer**: without one, the kernel tries to start a task named by the dia-type.
   - Reader APIs: `getFirstFragOrderFromType`, `meKnowledge:getFragOrder`, the `get*FragOrder` queries,
-    `PhaseLine:needToWaitForCoordination`. They are listed in the planning report; step 1 turns them into a table.
+    `PhaseLine:needToWaitForCoordination`, and the poll helpers inside `FragOrder.lua` itself. The table is in
+    `_fragorder_notes.md` §1.2 Q5.
 - **Frago tasks**
   - 34 tasks: `common/agent/tasks/frago/` 18, `military/agent/tasks/frago/` 11, `security/agent/behaviors/frago/` 4,
     `crowd/behaviors/tasks/frago/` 1. Frag orders also start navy and other tasks.
@@ -227,8 +242,9 @@ Path aliases (as in `mission-builder.md`):
   - 49 initializers serve dia-types that are in neither DB.
   - Empty initializers that nothing reads (the `GoTo*Area` ones, `SupportWithDirectFire`, `LendEquipment`) are never
     cleaned.
-  - Propagation names match no dia-type: `GoTo`, `Rep_OrderConduite_MettreTenueNBC`, `ActivateNBCProtection`,
-    `ProvideIndirectFire`.
+  - 26 propagation names match no dia-type of either DB (corrected at step 1). Most are client names (`france.*`,
+    `bangladesh.*`) or legacy names. The defects are the misspellings of an existing dia-type: `GoTo`,
+    `Rep_OrderConduite_MettreTenueNBC`, `ActivateNBCProtection`, `ProvideIndirectFire`.
   - Some frago tasks are never started.
   - `SafetyDismount` mounts the unit.
   - Bugs in `getFragOrders.lua:10` (`resSize`) and `integration.isTask = nil`.
@@ -240,7 +256,7 @@ Path aliases (as in `mission-builder.md`):
   - the frag-order action records (`ActionManager` saves only `orders_`);
   - frag orders in `MissionController::WriteMissions` / `ReadMissions`.
 - **Correction for `CHECKPOINTS.md` §1:** crowd and task-group missions are also saved and resumed
-  (`MissionController.cpp` 151–190).
+  (`sim/MissionController.cpp` 128–183; the file is at the root of `sim/`).
 - **Queued, not consumed** → lost. No report and no ack is sent again.
 - **Frago task running** → the Spark store keeps `behaviors[<task>].seqStageIndex` (saved in the `state` string), but
   the list of active behaviors is not saved.
@@ -304,7 +320,7 @@ Path aliases (as in `mission-builder.md`):
   `fragorder builder: step 0 handoff`.
 
 ### Phase A — shared knowledge
-- [ ] **1. Verify the Context, settle the open questions** (read-only; answers in `_fragorder_notes.md` §1, and in this
+- [x] **1. Verify the Context, settle the open questions** (read-only; answers in `_fragorder_notes.md` §1, and in this
   file's Context when a fact changes):
   - Re-verify every unmarked Context fact. Correct or drop the ones that do not hold.
   - **`FragOrder.lua` format:**
@@ -537,3 +553,9 @@ Path aliases (as in `mission-builder.md`):
 ## Progress log
 - 2026-11-05 step 0: handoff written from the approved plan (planning exploration of the physical files, dia5, the
   sim side and checkpoints; facts in **Context**, ✓ = read directly in planning).
+- 2026-11-05 step 1: Context re-verified (`_fragorder_notes.md` §1.1; counts by script, code at the cited lines).
+  - **Corrected:** 92 cross-DB ids; frago task labels must be in Stages.xml; `sim/MissionController.cpp` path;
+    26 dead propagation names.
+  - **New:** `FragOrder.lua` is CRLF and grouped by theme; house style = kernel path (c) first (`6db5a91523`); all
+    brains are `BMAgent.bms`, so a non-propagated unit task can start on the commander; the checkpoint is written after
+    `OnEndTick`; ids follow the max + 1 rule.
