@@ -186,8 +186,9 @@ Path aliases:
 - **Mission translations:** `phy/Locales/fr/Missions_fr.ts` (wwt has no `Locales/`). The mission name goes in context
   `unit-missions`; parameter names and enum values go in context `unit - <mission name>`; a new category goes in
   `mission-categories`.
-- **Mission sheets:** `Mission sheets/units/<name>.xml` + `.html` in both DBs; French sheets under
-  `Mission sheets/units/Locales/fr/<French name>.xml/.html`.
+- **Mission sheets:** `Mission sheets/units/<name>.xml` + `.html` in each DB that has the mission (a mission may be
+  in one DB only: 75 mildb-only, 114 wwt-only); French sheets **mildb only**, under
+  `Mission sheets/units/Locales/fr/<French name>.xml/.html` (French name = the `unit-missions` translation).
   - The sheet XML is a `<mission-sheet>` with `context`, `parameters`, `behavior`, `specific-cases`, `comments`,
     `mission-end` and `attachments`.
   - The `.html` is rendered by ADN through `missionSheets.xslt` (`phy/physical.xml`).
@@ -293,7 +294,7 @@ Path aliases:
 - [x] **0. Handoff file.** This file. Commit `mission builder: step 0 handoff`.
 
 ### Phase A — shared knowledge
-- [ ] **1. Settle open format questions** (read-only; answers go into `_mission_notes.md` § 1, and into this file's
+- [x] **1. Settle open format questions** (read-only; answers go into `_mission_notes.md` § 1, and into this file's
   Context if they change a fact):
   - Insertion order in `Missions.xml` (by id?), in a model's `<missions>`, in `Stages.xml`, and in the `.ts` contexts.
   - How a sheet `.html` is produced. Stdlib has no XSLT, so mirror an existing simple sheet.
@@ -422,3 +423,6 @@ Path aliases:
 ## Progress log
 - 2026-11-05 step 0: handoff written from the approved plan (exploration of sw.models, directai, sw.sword missions
   and checkpoints done in the planning session; facts in **Context**).
+- 2026-11-05 step 1 (same 3 commits): answers in `_mission_notes.md` §1. Append missions at end of `<units>`; Stages,
+  .ts sorted ordinal; ids = max over both DBs + 1; absent optional → task `<default>`; `getPersistentKey` order
+  unstable (Lua 5.2.4 seed); version = `build/build.xml` `version.major`. fr sheets are mildb only (Context fixed).
