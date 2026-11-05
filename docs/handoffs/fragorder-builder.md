@@ -347,7 +347,7 @@ Path aliases (as in `mission-builder.md`):
   - **Id convention:** do frag orders follow the scaffold's "max over both DBs + 1, same in both"?
 
   *Done when:* each question has an answer with a file:line, or is marked "unknown, ask the user".
-- [ ] **2. `docs/sw.models/FRAGORDERS.md`.**
+- [x] **2. `docs/sw.models/FRAGORDERS.md`.**
   - Anatomy table: file → element → rule → `path::anchor`, per DB. It covers:
     - Missions.xml `<fragorders>` and Models.xml model-level / mission-level lists for unit, automat and crowd models;
     - sheets (en + fr), `.ts` contexts, `FragOrder.lua` (initializer, propagation, automat branch), frago task folders.
@@ -559,3 +559,9 @@ Path aliases (as in `mission-builder.md`):
   - **New:** `FragOrder.lua` is CRLF and grouped by theme; house style = kernel path (c) first (`6db5a91523`); all
     brains are `BMAgent.bms`, so a non-propagated unit task can start on the commander; the checkpoint is written after
     `OnEndTick`; ids follow the max + 1 rule.
+- 2026-11-05 step 2: `FRAGORDERS.md` (anatomy, a kinds decision table with a survives-checkpoint column, delivery,
+  binding, frago tasks, automats / crowds, readers, checks, build order); registered in the checker; THEMES "Frag
+  orders" row points to it. New facts:
+  - an initializer that returns without cleaning reruns every tick;
+  - any task start / stop (frago included) resets `meKnowledge.currentTask`, and stop / finish runs `Cleanup`;
+  - the precedent's frago priorities were forgotten and fixed later (`d87f8b86d9`).
