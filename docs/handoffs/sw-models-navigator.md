@@ -286,4 +286,9 @@ _(one entry per finished step: date, step, what was produced, what the next step
 - 2026-11-05, step 6: `.claude/agents/sw-models-navigator.md` (context check = branch + HEAD + model dirs + index
   commit in one Bash call; stale → grep; other branches via `git show` / `git ls-tree` / `git grep`; proposals
   checklist; boundaries in description and body) and `.claude/skills/models/SKILL.md`. Agent added to the kit; all kits 624 refs, 0 problems.
+- 2026-11-05, step 7 Q1 (mount/dismount skill): **pass**, ~14 tool calls. Found actions.Mount/Dismount (shared
+  `Mounting` resource), wrapper skill, frago tasks, direct and one-level task users, and the transport family.
+  Citations checked: Mount/Dismount XML resources, Monitor.xml behavior, FragOrder.lua stopTask pairs, MeKnowledge.lua
+  `mountStarted`, security frago XML. Real bug found: `security.agent.behaviors.frago.Dismount` runs `actions.Mount`.
+  Map updates applied: row split (own vehicles / carried), vocabulary gotcha, bug gotcha. Checker 638 refs, 0 problems.
 
