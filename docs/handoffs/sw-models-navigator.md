@@ -250,7 +250,7 @@ _(filled in at step 1; a resumed session must not ask again)_
   - *Done when:* the result is logged and the checker passes.
 
 ### Phase D — cross-link and close
-- [ ] **14. Cross-link.**
+- [x] **14. Cross-link.**
   - In `sw-sword-navigator.md` and `docs/sw.sword/THEMES.md`, point model-side questions to the new navigator.
   - Check that `docs/directai/THEMES.md` covers the Spark type system (class / interface / role / body-type, validation rules) and resources and actions (arbitration, `spark.action`, `startStopAction`). Add verified, anchored rows there if it doesn't.
   - *Done when:* the checker passes on all kits.
@@ -352,3 +352,9 @@ _(one entry per finished step: date, step, what was produced, what the next step
   Citations checked (MeKnowledge sensor methods, FlyingMeKnowledge land/takeOff, DeactivateSensors deselect, plain
   RegisterFunction of the DEC calls). Applied its map update. Note: master now also has a `UKR` model dir. Checker 738 refs,
   0 problems; 3 client branches 0 problems.
+- 2026-11-05, step 14: sw-sword-navigator: description + new "Boundary with sw-models-navigator" section; sw.sword THEMES:
+  model-side pointer in the header, "Async actions" row fixed (was `sim/ActionManager.cpp`, which handles client orders),
+  2 gotchas (no cancel on mission change; starters not recognisable by name / stop doesn't undo / lost first callback).
+  directai THEMES already had rows for roles/body type, classes/interfaces, resources, actions; fixed the wrong "selected
+  boost" gotcha (default 1.0) and added 5 (resources refilled per tick + only `select` nodes consume, `spark.action`
+  select/deselect generation, brain destruction runs no stop, class rules A/B, role body check). All kits 738 refs, 0 problems.
