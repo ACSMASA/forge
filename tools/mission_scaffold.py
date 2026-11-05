@@ -1,7 +1,7 @@
 """Scaffold a unit mission in a sw.models model from a JSON spec: normalized insertions into the physical files.
 
 Usage (from the forge root):
-    python -I tools/mission_scaffold.py SPEC.json [--root C:/MASARepo/sw.models] [--model ada]
+    python -I tools/mission_scaffold.py SPEC.json|- [--root C:/MASARepo/sw.models] [--model ada]
                                        [--sword C:/MASARepo/sw.sword] [--write [--allow-master]]
     python -I tools/mission_scaffold.py --example        # print a commented example spec
 
@@ -766,7 +766,7 @@ def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("spec", nargs="?", help="JSON spec file")
+    ap.add_argument("spec", nargs="?", help="JSON spec file, or - for stdin")
     ap.add_argument("--root", default=ml.DEFAULT_ROOT, help="sw.models root (or a scratch copy)")
     ap.add_argument("--model", default="ada")
     ap.add_argument("--sword", default=ml.DEFAULT_SWORD)
@@ -788,8 +788,14 @@ def main():
         sys.exit(0 if same == tot else 1)
     if not a.spec:
         ap.error("a spec file is required (or --example / --check-html)")
-    with open(a.spec, encoding="utf-8") as fh:
-        spec = {k: v for k, v in json.load(fh).items() if not k.startswith("_")}
+    if a.spec == "-":
+        if hasattr(sys.stdin, "reconfigure"):
+            sys.stdin.reconfigure(encoding="utf-8")
+        raw = json.load(sys.stdin)
+    else:
+        with open(a.spec, encoding="utf-8") as fh:
+            raw = json.load(fh)
+    spec = {k: v for k, v in raw.items() if not k.startswith("_")}
     if not model.types.ok:
         print(f"WARN sw.sword type tables not found under {a.sword}: types not checked, skeleton types guessed")
     try:

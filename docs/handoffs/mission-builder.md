@@ -392,7 +392,7 @@ Path aliases:
   - Validate on a scratch copy (`--root`): scaffold, then `mission_check` must be clean.
 
 ### Phase C — agent and skills
-- [ ] **9. `.claude/agents/sw-mission-builder.md`** (tools: Read, Grep, Glob, Bash, Edit, Write; model inherit) and
+- [x] **9. `.claude/agents/sw-mission-builder.md`** (tools: Read, Grep, Glob, Bash, Edit, Write; model inherit) and
   `.claude/skills/mission/SKILL.md` (`/mission`, `context: fork`).
   - Description in the navigators' style: unit missions only, NOT automat missions, frag orders or sim-semantics
     questions.
@@ -454,3 +454,6 @@ Path aliases:
 - 2026-11-05 step 8 (same 3 commits): `mission_scaffold.py` (JSON spec → Missions/Models/Stages/.ts/sheets/task skeleton;
   diff by default, `--write` refused on master). Sheet `.html` renderer byte-exact on 780/780 (`--check-html`; rules in
   notes §8). Scratch validation: two specs scaffolded, `mission_check` 0/0, `--all` unchanged (22/12).
+- 2026-11-05 step 9: `sw-mission-builder` agent (10-step procedure, root override for scratch copies, master stop,
+  sim-side diff + Lua-side option + recommendation, Critique section) and `/mission` (fork). Scaffold reads the spec
+  from stdin (`-`). Agent added to the checker's sw.models kit. Restart Claude Code before using it directly.
