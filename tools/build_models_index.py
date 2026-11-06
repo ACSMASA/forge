@@ -459,18 +459,21 @@ def build_decisional(repo, model, out):
               f"{len(mo['fragorders'])} | {cnt.get(mo['name'], 0)} |")
         w("")
         w(f"### Frag orders in `physical/{d['name']}/Missions.xml`\n")
-        w("Init = initializer in `FragOrder.lua` `fragOrderTaskInitializers` (no initializer → "
-          "`integration.startFragOrder`, handled by the kernel / integration layer). Starts = task(s) the initializer "
-          "starts (`return true, \"…\"`, or the dia-type itself on a bare `return true`). Prop = listed in "
-          "`fragOrdersToBePropagated`. Auto = tested in `fragOrder.executeAutomatFragOrder`.\n")
+        w("Init = initializer in `FragOrder.lua` `fragOrderTaskInitializers`. Starts = with an initializer, the "
+          "task(s) it starts (`return true, \"…\"`, the dia-type itself on a bare `return true`, or a direct "
+          "`<task>:start(`), empty when it starts none; without one, `kernel:` = `integration.startFragOrder` starts "
+          "the task named by the dia-type (✗ = no such task: \"unknown behavior\" at order time, unless only "
+          "commanders or task groups receive it). Prop = listed in `fragOrdersToBePropagated`. Auto = tested in "
+          "`fragOrder.executeAutomatFragOrder`. Kind, models, readers and checkpoint class: `mission_index.md` §6.\n")
         w("| DB | Frag order | dia-type | Without mission | Init | Starts | Prop | Auto |\n|---|---|---|---|---|---|---|---|")
         for fo in sorted(d["fragorders"], key=lambda x: x.get("name", "")):
             dt = fo.get("dia-type", "")
-            starts = frag["init"].get(dt, set())
-            if dt in known_tasks:
-                starts = starts | {dt}
+            if dt in frag["init"]:
+                starts = code(sorted(frag["init"][dt]))
+            else:
+                starts = f"kernel: `{dt}`" if dt in known_tasks else "kernel: ✗"
             w(f"| {d['name']} | \"{fo.get('name')}\" | `{dt}` | {fo.get('available-without-mission', '')} | "
-              f"{'yes' if dt in frag['init'] else ''} | {code(starts)} | {'yes' if dt in frag['propagated'] else ''} | "
+              f"{'yes' if dt in frag['init'] else ''} | {starts} | {'yes' if dt in frag['propagated'] else ''} | "
               f"{'yes' if dt in frag['automat'] else ''} |")
         w("")
 
@@ -1529,6 +1532,19 @@ def build_missions(repo, model, out, sword):
                 if tp:
                     shapes[c + (" list" if p.is_list else "")][tp.shape] += 1
 
+    fo_status = {}
+    for db in m.dbs.values():
+        others = [o for o in m.dbs.values() if o is not db]
+        for fo in db.fragorders:
+            rep = mc.Report(m, False)
+            mc.check_fragorder(fo, db, m, rep, others)
+            fo_status[(db.name, fo.name)] = (sum(1 for i in rep.items if i[0] == "ERROR"),
+                                            sum(1 for i in rep.items if i[0] == "WARN"))
+            anomalies += [i for i in rep.items if i[0] != "NOTE"]
+    rep = mc.Report(m, False)
+    mc.check_fragorders_global(m, list(m.dbs.values()), rep)
+    anomalies += [i for i in rep.items if i[0] != "NOTE"]
+
     branch, head, date = repo_stamp(repo)
     sb, sh, sd = repo_stamp(sword) if os.path.isdir(sword) else ("?", "?", "?")
     L = []
@@ -1542,7 +1558,8 @@ def build_missions(repo, model, out, sword):
       "working tree. **Grep this file, never read it whole.** Rules behind the columns: `docs/sw.models/MISSIONS.md`, "
       "`docs/sw.models/CHECKPOINTS.md`.\n")
     w("Sections: §1 parameter-type catalog · §2 unit missions (one row per DB) · §3 skill signatures + checkpoint · "
-      "§4 query signatures · §5 anomalies (mission_check errors and warnings).\n")
+      "§4 query signatures · §5 anomalies (mission_check errors and warnings, missions and frag orders) · §6 frag "
+      "orders (one row per DB; rules: `docs/sw.models/FRAGORDERS.md`).\n")
 
     # §1
     w("## 1. Parameter-type catalog (`Missions.xml` `type`)\n")
@@ -1667,15 +1684,67 @@ def build_missions(repo, model, out, sword):
 
     # §5
     w("## 5. Anomalies (mission_check errors and warnings at build time)\n")
-    w("Cross-DB id differences (notes) are omitted: `mission_check.py --all -v`.\n")
+    w("Missions, then frag orders (subject `frag order \"<name>\"`), then the global frag-order checks (DB `-`). "
+      "Notes (cross-DB id differences, client propagation names, initializers for dia-types in no DB…) are omitted: "
+      "`mission_check.py --all -v`.\n")
     w("| Level | DB | Mission | Finding | Where |\n|---|---|---|---|---|")
     for level, dbn, subj, msg, where in anomalies:
         w(f"| {level} | {dbn} | {subj} | {msg.replace('|', '/')} | {where} |")
+    w("")
+    # §6
+    reg = m.fragorder_lua()
+    w("## 6. Frag orders (one row per physical DB)\n")
+    w("Row = `| <db> | \"<frag order>\" |`. **W/o** = `available-without-mission`. **Kind** (`FRAGORDERS.md` §2): "
+      "`a` initializer starts a task · `b` read by skills (empty or clean-only initializer) · `c` kernel starts the "
+      "task named by the dia-type · `c2` task group (out of scope) · `d` commander only · `f` immediate effect in the "
+      "initializer · `b?` empty initializer read by nothing · `f?` clean-only initializer read by nothing · `none` "
+      "handled by nothing; crowd orders are `a` / `f` on a crowd task. **Starts** = task(s) (✗ = missing). "
+      "**Params**: `dia-name:Type`, `[]` list, `?` optional. **Models**: per kind (u unit, a automat, c crowd, t task "
+      "group), `L` = models listing it at model level, `M` = models listing it under at least one mission. "
+      "**Prop** = in `fragOrdersToBePropagated`; **Auto** = `executeAutomatFragOrder` branch (`FragOrder.lua` line). "
+      "**Readers** = dia5 entities naming the dia-type outside `FragOrder.lua` (upper bound: senders and filters "
+      "too), `⌂` = commander code, plus the callers of its `FragOrder.lua` poll helper. **Checkpoint** = what survives "
+      "a save + resume (`CHECKPOINTS.md` §7.4). **Check** = `mission_check.py --fragorder` errors / warnings (details "
+      "in §5).\n")
+    w("| DB | Frag order | dia-type | Id | W/o | Kind | Starts | Params | Models | Prop | Auto | Readers | Checkpoint | Check |")
+    w("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+
+    def ent_names(rels, mark=""):
+        out_ = []
+        for r in rels:
+            e_ = ml.entity_of_rel("/" + r)
+            if e_:
+                out_.append(mark + e_.rsplit(".", 1)[-1])
+        return list(dict.fromkeys(out_))
+
+    for db in m.dbs.values():
+        for fo in sorted(db.fragorders, key=lambda x: x.name):
+            info = m.fragorder_info(db, fo)
+            params = ", ".join(f"{p.dia_name}:{types.canonical(p.type) or p.type}{'[]' if p.is_list else ''}"
+                               f"{'?' if p.optional else ''}" for p in fo.params)
+            mods = []
+            for kind, short in (("unit", "u"), ("automat", "a"), ("crowd", "c"), ("task-group", "t")):
+                lst = info.listed.get(kind, [])
+                if not lst:
+                    continue
+                lvl = len({mo for mo, mi in lst if mi is None})
+                msn = len({mo for mo, mi in lst if mi is not None})
+                mods.append(f"{short} " + " ".join(x for x in (f"{lvl}L" if lvl else "", f"{msn}M" if msn else "") if x))
+            starts = ", ".join(f"`{tn}`{' ✗' if tn in info.missing_tasks else ''}" for tn in info.tasks)
+            if info.init is not None and info.init.computed:
+                starts += (", " if starts else "") + "(computed)"
+            rd = ent_names([r for r, _ in info.readers] + info.helper_callers) + ent_names([r for r, _ in info.commander_uses], "⌂")
+            e, w_ = fo_status[(db.name, fo.name)]
+            w(f"| {db.name} | \"{fo.name}\" | `{fo.dia_type}` | {fo.attrs.get('id')} | {'yes' if fo.without_mission else ''} | "
+              f"{info.kind} | {starts} | {params} | {' · '.join(mods)} | {'yes' if info.propagated else ''} | "
+              f"{info.automat_branch or ''} | {', '.join(rd[:6])}{' …' if len(rd) > 6 else ''} | "
+              f"{info.checkpoint_class} | {e}/{w_} |")
     w("")
     path = os.path.join(out, "mission_index.md")
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(L))
     return {"types": len(types.kind), "missions": sum(len(d.unit_missions) for d in m.dbs.values()),
+            "fragorders": sum(len(d.fragorders) for d in m.dbs.values()),
             "skills": sum(1 for e in ents.values() if e.kind == "skill"), "anomalies": len(anomalies)}
 
 

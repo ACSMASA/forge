@@ -455,7 +455,7 @@ Path aliases (as in `mission-builder.md`):
     - `frago-task-lost` (a note): every task-starting order. It cites `CHECKPOINTS.md` §7.
   - Validate: `MoveAlong` (flags Infiltrate), `ManageDiving` / `Transit` (clean on the derived value), Pause movement
     (`frago-task-lost` only).
-- [ ] **8. `mission_index.md` §6 Frag orders** (`build_models_index.py --only missions`).
+- [x] **8. `mission_index.md` §6 Frag orders** (`build_models_index.py --only missions`).
   - One row per frag order per DB: name, dia-type, id, without-mission, **kind**, initializer → task, params
     (dia-name:type), models (unit / automat / crowd, model-level / under missions), propagated, automat branch,
     readers, checkpoint class, `mission_check` status.
@@ -597,3 +597,7 @@ Path aliases (as in `mission-builder.md`):
   `order-effect-not-persisted`, `fragorder-param-state` and the `frago-task-lost` note; CHECKPOINTS.md §3 lint
   paragraph updated. Validated: MoveAlong flagged, ManageDiving / Transit clean, Pause movement = the 2 notes + 1
   `lost-timer` upper bound in `actions.Wait` (unreachable for it; notes §7).
+- 2026-11-06 step 8: `mission_index.md` §6 (168 rows: kind, starts, params, models per kind L/M, prop, auto, readers,
+  checkpoint class, check status) and frag-order anomalies in §5; `decisional_index.md` §7 "Starts" now shows
+  `kernel: <task>` / `kernel: ✗` without an initializer (and no longer adds the dia-type to an initializer's starts);
+  README updated; both rebuilt from master @ `d2f78fafcd`, fresh.

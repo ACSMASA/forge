@@ -9,11 +9,13 @@ The navigator answers from the **files** of `C:/MASARepo/sw.models` (DIA5 decisi
 | `ontology_index.md` | world classes (chain, interfaces, ontology keys, mission param types), every world-class method (form, override, callers by name: upper bounds), interfaces and implementers, task-metadata classes, roles (effective body type, type map), anomaly report | generated; header gives sw.models and sw.sword branch + commit |
 | `action_index.md` | resources and the skills acquiring them; every action skill and every other skill with `<resources>` (pattern, callbacks, `startStopAction` methods called, integration calls, kernel action starters); every `spark.startStopAction` world method with its handlers; integration functions that start kernel actions; anomalies | generated; reads sw.sword integration Lua and the C++ `StartAction<` registrations; header gives both commits |
 
-| `mission_index.md` | unit missions: §1 parameter-type catalog (Spark converter, absent value nil/NIL, ontology class, hashable, task shapes seen), §2 one row per mission per DB (task, params, models, end, stages, `mission_check` status), §3 skill signatures with persisted state keys and `checkpoint_lint` counts, §4 query signatures, §5 anomalies | generated (`--only missions`); reads sw.sword type tables; header gives both commits |
-| `MISSIONS.md`, `CHECKPOINTS.md` | unit-mission anatomy and rules; save / resume hazards, conventions, sim-side gaps | hand-written, one-line anchored rules; checked by `tools/check_themes.py` |
+| `mission_index.md` | unit missions: §1 parameter-type catalog (Spark converter, absent value nil/NIL, ontology class, hashable, task shapes seen), §2 one row per mission per DB (task, params, models, end, stages, `mission_check` status), §3 skill signatures with persisted state keys and `checkpoint_lint` counts, §4 query signatures, §5 anomalies (missions and frag orders), §6 one row per frag order per DB (kind, started task, params, models per kind and level, propagation, automat branch, readers, checkpoint class, `mission_check` status) | generated (`--only missions`); reads sw.sword type tables and integration Lua; header gives both commits |
+| `MISSIONS.md`, `CHECKPOINTS.md`, `FRAGORDERS.md` | unit-mission anatomy and rules; save / resume hazards, conventions, sim-side gaps, the frag-order fix pair (§7); frag-order anatomy, kinds, delivery, automats / crowds, checks | hand-written, one-line anchored rules; checked by `tools/check_themes.py` |
 
 Tools on the working tree (no index needed): `python -I tools/mission_check.py --mission "<name>"` (or `--task`,
-`--all`) and `python -I tools/checkpoint_lint.py --skill <name>` (or `--task`, `--all`). Writer:
+`--fragorder "<name or dia-type>"`, `--all-fragorders`, `--all`) and `python -I tools/checkpoint_lint.py --skill <name>`
+(or `--task`, `--fragorder`, `--all`). The frag-order parsers (`FragOrder.lua`, Models.xml lists, readers) live in
+`tools/missionlib.py`, shared with the index builder. Writer:
 `python -I tools/mission_scaffold.py SPEC.json [--root <copy>] [--write]` (spec format: `--example`; prints a diff
 unless `--write`, refused on master; `--check-html` self-tests the sheet renderer against every `.html` on disk).
 
