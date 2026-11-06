@@ -1,5 +1,10 @@
 # Handoff: build the frag-order builder (shared frag-order kit, tools, agent)
 
+**DONE 2026-11-06.** Record only: the facts below were folded into `docs/sw.models/FRAGORDERS.md`, `CHECKPOINTS.md`
+(§1–§7), `mission_index.md` §6, the tools (`missionlib`, `mission_check`, `checkpoint_lint`, `mission_scaffold`) and
+`.claude/agents/sw-fragorder-builder.md`; the working notes (`_fragorder_notes.md`, deleted at step 13) are in git
+history (`git log --oneline -- docs/sw.models/_fragorder_notes.md`). Not sources of facts (forge `CLAUDE.md`).
+
 > **How to use:** start a Claude Code session in `C:\MASARepo\forge` and say
 > "Continue `docs/handoffs/fragorder-builder.md` from the first unchecked step". Effort: high. Small steps, each
 > ending in a commit, so an interrupted run loses at most one step. Written 2026-11-05 from the approved plan of
@@ -543,7 +548,7 @@ Path aliases (as in `mission-builder.md`):
   - (g) **Kit only, without the builder:** a general-purpose agent following sw-models-navigator answers "what
     happens when 'Use infiltration path' reaches an infantry platoon during a move mission" and "does 'Pause movement'
     survive a checkpoint?" from the kit.
-- [ ] **13. Close.**
+- [x] **13. Close.**
   - CLAUDE.md: a builder bullet (`sw-fragorder-builder`, `/fragorder`, `/mission-check` covers frag orders) and the
     tools in the pipeline row.
   - Delete `_fragorder_notes.md` and mark this file **DONE**.
@@ -617,3 +622,5 @@ Path aliases (as in `mission-builder.md`):
   mission_check summary / `--receiver` / readers per mission; checkpoint_lint guarded-block rule (41 → 15) and
   class notes; scaffold `existing` mode, propagation anchor, better skeleton, Numeric refusal; kit (FRAGORDERS §1–§8,
   CHECKPOINTS §7.3–§7.4, sw.sword THEMES) and both prompts. mission_index rebuilt. **Restart Claude Code.**
+- 2026-11-06 step 13: CLAUDE.md builder bullet (sw-fragorder-builder, /fragorder, /mission-check covers frag orders);
+  `_fragorder_notes.md` deleted (in git history); this file marked DONE; memory pointer updated; checker passes.

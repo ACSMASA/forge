@@ -21,6 +21,10 @@ Navigator subagents: your own prompt comes first; this file is mainly for the ma
 - **Building a unit mission** (writes into sw.models on the user's branch, never commits): `sw-mission-builder` (/mission).
   Linting one, or "is this skill checkpoint-safe?": the inline `/mission-check` skill (mission_check + checkpoint_lint,
   explained from MISSIONS.md / CHECKPOINTS.md). Explaining an existing mission's flow stays with sw-models-navigator.
+- **Building a frag order** (units, automats, crowds; same write rules): `sw-fragorder-builder` (/fragorder). It shares
+  the tools (`mission_check` / `checkpoint_lint` `--fragorder`, `mission_scaffold` `"fragorder": true`) and the kit
+  (FRAGORDERS.md, CHECKPOINTS.md §7, `mission_index.md` §6). `/mission-check` also lints a frag order (name or
+  dia-type); "what happens when frag order X reaches unit Y" stays with sw-models-navigator.
 
 ## The pipeline (sw.models → directai → sw.sword)
 Kits: `docs/sw.models/`, `docs/sw.sword/`, `docs/directai/`. "Meaning" = which navigator owns the semantics.
