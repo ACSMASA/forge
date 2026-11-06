@@ -68,9 +68,12 @@ Written from sw.models `master` @ `d2f78fafcd`, sw.sword `master` @ `51bdc0ec9e`
 
 `tools/checkpoint_lint.py` (`--skill`, `--task`, `--all`) flags most rows above with file:line (rules
 `lost-progress`, `unhashable`, `key-order`, `or-true`, `stored-object`, `no-clear`, `side-effect`, `re-report`,
-`table-eq`, `lost-timer`); findings are upper bounds to confirm in the code. The four frag-order rows are not linted
-yet (`--fragorder`, step 7 of `docs/handoffs/fragorder-builder.md`). Out of its scope: state kept in world
-objects (`object[myself]`, `startStopAction` state) and in integration functions.
+`table-eq`, `lost-timer`, and for frag orders `order-effect-not-persisted` (a reader keeps the derived value only in
+`self`), `fragorder-param-state`); findings are upper bounds to confirm in the code. `--fragorder "<name or
+dia-type>"` lints the closure of the task(s) the order starts and, for kind (b), its reading skills, and adds one
+`frago-task-lost` NOTE per task-starting order (§7). Not linted: an initializer effect kept in `myself` (read the
+initializer), the orphan stage. Out of its scope: state kept in world objects (`object[myself]`, `startStopAction`
+state) and in integration functions.
 
 ## 4. Conventions (from the model)
 

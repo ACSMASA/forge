@@ -258,3 +258,16 @@ propagation to subordinates is a WARN only when **every** subordinate model of a
 "Aviation bomber squadron" (mildb) lists it under `COMMON - Move`, but its only subordinate unit model (also named
 "Aviation bomber squadron") lists it under none of its 6 missions; same for wwt "Test company". Its own wiring
 (initializer → `common.agent.tasks.frago.WaitThere`, lists, sheets, `.ts`) is clean.
+
+## 7. Step 7: `checkpoint_lint --fragorder`
+
+- `order-effect-not-persisted`: 41 findings over `--all`. Validation: MoveAlong `self.pathType` (Infiltrate) flagged;
+  ManageDiving (`targetDepth`) and Transit (`maxSpeedOnWater`) clean; `--fragorder Infiltrate` lints exactly the 4
+  reader skills of the §1.2 Q5 table (MoveAlong, MoveAndTakePosition, ReconnoiterInOrder, ReconnoiterRoute).
+- `fragorder-param-state`: 0 today (no skill keys state on a FragOrder parameter), as step 1 found.
+- `--fragorder "Pause movement"`: the 2 `frago-task-lost` notes (one per DB) **plus** 1 `lost-timer` upper bound in
+  `actions.Wait` (`waitInMin`). That one is unreachable for Pause movement (its initializer sets no `delay`), but real
+  for other users of WaitThere; kept. Readers are linted only for kind (b): for the other kinds the dia-type strings
+  are senders (Transport) or commander filters.
+- The Lua helpers (`strip_comments`, `mask_strings`, `block_end`) now come from missionlib; `checkpoint_lint --all`
+  output is byte-identical to before for the old rules.

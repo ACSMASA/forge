@@ -2,10 +2,12 @@
 is an upper bound to confirm by reading the code. Rules and fixes: docs/sw.models/CHECKPOINTS.md §3-§4.
 
 Usage (from the forge root):
-    python -I tools/checkpoint_lint.py (--skill NAME | --task TASK | --all | --file PATH.lua) [--rules r1,r2]
-                                       [--model ada] [--root C:/MASARepo/sw.models] [--summary]
+    python -I tools/checkpoint_lint.py (--skill NAME | --task TASK | --fragorder NAME | --all | --file PATH.lua)
+                                       [--rules r1,r2] [--model ada] [--root C:/MASARepo/sw.models] [--summary]
 
 --task walks the task's stage behaviors, then skill links, recursively (skills only; queries keep no state).
+--fragorder (a frag-order name or dia-type, every DB) lints the task(s) the order starts, as --task, and the skills
+that read it (kind (b) readers and the callers of its poll helpers: docs/sw.models/FRAGORDERS.md §2, §7).
 Rules:
   lost-progress   self.x set to a flag / counter / timer in activate or a callback (not in create/start/select/started,
                   which rerun on resume), x never persisted in the skill state
@@ -19,6 +21,12 @@ Rules:
   table-eq        x == {} / x ~= {} (always false / true)
   lost-timer      utilities.waitInMin / waitInSec keep their start time in a Lua table (knowledge[myself]): the full
                   delay restarts after resume
+  order-effect-not-persisted  a function reads a frag order (get*FragOrder, getFirstFragOrderFromType,
+                  meKnowledge:getFragOrder, needToWaitForCoordination) and sets self.x afterwards, x never persisted:
+                  the order is consumed (and the queue is not saved), so the effect is lost on resume
+  fragorder-param-state  getSkillState in a skill with a FragOrder parameter (FragOrder classes have no hash)
+  frago-task-lost (--fragorder only, a NOTE)  the order starts a task: it is not resumed after a checkpoint unless
+                  one of the CHECKPOINTS.md §7 fixes is applied
 Out of scope: state kept in world objects (object[myself], startStopAction state) and in integration functions.
 Exit code 0 (findings are warnings).
 """
@@ -32,13 +40,14 @@ import missionlib as ml  # noqa: E402
 from build_models_index import lua_class_methods, scan_decisional, link_refs, read  # noqa: E402
 
 RULES = ["lost-progress", "unhashable", "key-order", "or-true", "stored-object", "no-clear", "side-effect", "re-report",
-         "table-eq", "lost-timer"]
+         "table-eq", "lost-timer", "order-effect-not-persisted", "fragorder-param-state", "frago-task-lost"]
+# Frag-order reader APIs (FRAGORDERS.md §7): their result is a consumed order, absent after resume.
+READER = re.compile(r"\b(get\w*FragOrder\w*|getFirstFragOrderFromType|needToWaitForCoordination)\s*[({]")
 # Timer helpers that keep their start time in Lua (int/ToolsFunctions.lua: knowledge[myself].tempsDebut), lost on resume.
 LUA_TIMER = re.compile(r"\b(?:utilities\.)?(waitInMin|waitInSec)\s*\(")
 # Functions that rerun after a resume (node recreated, action restarted): what they set is rebuilt, not lost.
 RERUN_FN = {"create", "start", "started", "select", "deselect", "stop", "destroy"}
 LIFECYCLE_FN = re.compile(r"\b([A-Za-z_]\w*)\s*=\s*function\s*\(")
-BLOCK_TOK = re.compile(r"\b(function|if|while|for|do|repeat|end|until)\b")
 STATE_CALL = re.compile(r"\b(?:scripts|integration)\.(getSkillState|setSkillState|setSkillStateElement|setSkillStatePointElement|"
                         r"getSkillStatePointElement|clearSkillState)\s*\(|\bgetPersistentState\s*\(")
 TIME_EXPR = re.compile(r"getRealTime|getSimulationTime|DEC_TempsReel|DEC_TempsSim|\bgetTime\s*\(")
@@ -48,40 +57,11 @@ REPORT = re.compile(r"(?::|\.)\s*(displayReport\w*|sendMessage\w*|SendMessage\w*
                     r"\b(reportFunction)\s*\(")
 
 
-def strip_comments(src):
-    """Remove Lua comments, keep strings and line numbers."""
-    src = re.sub(r"--\[(=*)\[.*?\]\1\]", lambda m: "\n" * m.group(0).count("\n"), src, flags=re.S)
-    return re.sub(r"--[^\n]*", "", src)
-
-
-STRING = re.compile(r"""\[(=*)\[.*?\]\1\]|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'""", re.S)
-
-
-def mask_strings(code):
-    """Same text with string contents blanked (same length, newlines kept): offsets stay valid."""
-    return STRING.sub(lambda m: m.group(0)[0] + re.sub(r"[^\n]", " ", m.group(0)[1:-1]) + m.group(0)[-1], code)
-
-
-def block_end(text, start):
-    """End offset of the Lua block opened by the `function` keyword at `start` (text from mask_strings)."""
-    depth, pend_do = 0, 0
-    for m in BLOCK_TOK.finditer(text, start):
-        t = m.group(1)
-        if t in ("function", "if", "repeat"):
-            depth += 1
-        elif t in ("while", "for"):
-            depth += 1
-            pend_do += 1
-        elif t == "do":
-            if pend_do:
-                pend_do -= 1
-            else:
-                depth += 1
-        elif t in ("end", "until"):
-            depth -= 1
-            if depth == 0:
-                return m.end()
-    return len(text)
+# Lua text helpers live in missionlib (shared with the frag-order parser); kept under their old names here.
+strip_comments = ml.lua_strip_comments
+mask_strings = ml.lua_mask_strings
+block_end = ml.lua_block_end
+STRING = ml.LUA_STRING
 
 
 def functions(blank):
@@ -280,6 +260,25 @@ def lint_skill(path, xml_text, hashes, rules, model_root, keep_state=frozenset()
     # lost-timer
     for m in LUA_TIMER.finditer(code):
         add("lost-timer", code, m.start(), f"{m.group(1)} keeps its start time in a Lua table (int/ToolsFunctions.lua): the whole delay restarts after resume; persist an absolute utilities.getRealTime() deadline instead")
+    # order-effect-not-persisted (one finding per field)
+    seen_fields = set()
+    for name, a, b in fns:
+        for rm in READER.finditer(code, a, b):
+            for m in re.finditer(r"\bself\.(\w+)\s*=(?!=)", code[rm.end():b]):
+                field = m.group(1)
+                if field in keys or field in seen_fields or field == "params":
+                    continue
+                seen_fields.add(field)
+                add("order-effect-not-persisted", code, rm.end() + m.start(),
+                    f"self.{field} is set after reading a frag order ({rm.group(1)}, line {lineno(code, rm.start())}) but "
+                    "not persisted: the order is consumed and the queue is not saved, so the effect is lost on resume; "
+                    "persist the derived value (CHECKPOINTS.md §4, ManageDiving targetDepth)")
+    # fragorder-param-state
+    if uses_state and xml_text is not None:
+        fparams = [p for p, tys in skill_param_types(xml_text).items() if any(ty.rsplit(".", 1)[-1] == "FragOrder" for ty in tys)]
+        m0 = re.search(r"getSkillState\s*\(", code)
+        if fparams and m0:
+            add("fragorder-param-state", code, m0.start(), f"getSkillState in a skill with FragOrder parameter(s) {fparams}: FragOrder classes have no hash, getPersistentKey errors (CHECKPOINTS.md §3)")
     # table-eq
     for m in re.finditer(r"[=~]=\s*\{\s*\}", code):
         add("table-eq", code, m.start(), "comparison with a new table {} is always false (==) / true (~=): use next( x ) == nil")
@@ -300,6 +299,33 @@ def closure(ents, start):
     return [ents[n] for n in sorted(seen) if ents[n].kind == "skill"]
 
 
+def fragorder_targets(a, ents, notes):
+    """Skills to lint for a frag order (the started tasks' closure + the readers), and frago-task-lost notes."""
+    model = ml.load_model(a.root, a.model)
+    skills, found = {}, 0
+    for db in model.dbs.values():
+        for fo in db.fragorders:
+            if a.fragorder not in (fo.name, fo.dia_type):
+                continue
+            found += 1
+            info = model.fragorder_info(db, fo)
+            where = (model.rel(db.missions_path), fo.line)
+            for tn in info.tasks:
+                if tn in ents:
+                    for e in closure(ents, tn):
+                        skills[e.name] = e
+                    notes.append((*where, f"{db.name} \"{fo.name}\" (kind {info.kind}) starts {tn}: not resumed after a checkpoint (the queue and the running frago tasks are not saved); fix pair and per-kind recommendation: CHECKPOINTS.md §7"))
+            # kind (b): the skills that read it (other kinds' dia-type strings are senders, stoppers, filters)
+            readers = [r for r, _ in info.readers + info.commander_uses] + info.helper_callers if info.kind == "b" else []
+            for r in dict.fromkeys(readers):
+                ent = ml.entity_of_rel("/" + r)
+                if ent in ents and ents[ent].kind == "skill":
+                    skills[ent] = ents[ent]
+    if not found:
+        sys.exit(f"no frag order named or with dia-type {a.fragorder} in {', '.join(model.dbs)}")
+    return [skills[k] for k in sorted(skills)], found
+
+
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -307,6 +333,7 @@ def main():
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--skill")
     g.add_argument("--task")
+    g.add_argument("--fragorder", help="frag-order name or dia-type")
     g.add_argument("--all", action="store_true")
     g.add_argument("--file")
     ap.add_argument("--rules", default=",".join(RULES))
@@ -326,7 +353,11 @@ def main():
         if e.kind == "role":
             dt = re.search(r"<default-task>(.*?)</default-task>", e.text, re.S)
             keep_state |= set(re.findall(r'<behavior\s[^>]*?name="([^"]+)"', dt.group(1) if dt else ""))
-    if a.file:
+    notes = []
+    if a.fragorder:
+        skills, n = fragorder_targets(a, ents, notes)
+        targets = [(e.path[:-4] + ".lua", e.text) for e in skills if e.lua]
+    elif a.file:
         p = os.path.abspath(a.file)
         x = p[:-4] + ".xml"
         targets = [(p, read(x) if os.path.isfile(x) else None)]
@@ -343,13 +374,17 @@ def main():
             skills = [e for e in ents.values() if e.kind == "skill"]
         targets = [(e.path[:-4] + ".lua", e.text) for e in skills if e.lua]
     findings = []
+    if "frago-task-lost" in rules:
+        for f, line, msg in notes:
+            print(f"NOTE frago-task-lost  {f}:{line}: {msg}")
     for lua, xml_text in targets:
         findings += lint_skill(lua, xml_text, hashes, rules, a.root, keep_state)
     if a.summary:
         from collections import Counter
         c = Counter(f[0] for f in findings)
+        c["frago-task-lost"] = len(notes) if "frago-task-lost" in rules else 0
         for r in RULES:
-            print(f"{r:14} {c.get(r, 0)}")
+            print(f"{r:26} {c.get(r, 0)}")
     else:
         for rule, f, line, msg in findings:
             print(f"WARN {rule:13} {f}:{line}: {msg}")

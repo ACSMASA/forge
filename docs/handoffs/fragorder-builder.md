@@ -446,7 +446,7 @@ Path aliases (as in `mission-builder.md`):
     - exit 1 on errors.
   - Triage `--all-fragorders` until there are no false positives. The seed anomalies in Context must appear;
     "Pause movement" must be clean.
-- [ ] **7. `checkpoint_lint.py --fragorder NAME`.**
+- [x] **7. `checkpoint_lint.py --fragorder NAME`.**
   - Resolve the order's task through the step 6 parser and lint its closure.
   - For kind (b), lint the reading skills.
   - **New rules** (warnings are upper bounds, with file:line):
@@ -593,3 +593,7 @@ Path aliases (as in `mission-builder.md`):
   dia5 string index (readers, stoppers); `scan_fragorder_lua` moved there. `mission_check.py --fragorder` /
   `--all-fragorders` (`--all` covers both). Triage in notes §6: all seeds reported; "Pause movement" keeps 2 true
   positives (automat models whose subordinates cannot receive it).
+- 2026-11-06 step 7: `checkpoint_lint.py --fragorder` (task closure + kind-(b) readers) with rules
+  `order-effect-not-persisted`, `fragorder-param-state` and the `frago-task-lost` note; CHECKPOINTS.md §3 lint
+  paragraph updated. Validated: MoveAlong flagged, ManageDiving / Transit clean, Pause movement = the 2 notes + 1
+  `lost-timer` upper bound in `actions.Wait` (unreachable for it; notes §7).
