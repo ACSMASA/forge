@@ -51,7 +51,9 @@ Frag-order mode (spec key "fragorder": true; rules and anchors: docs/sw.models/F
   without_mission, models_level, missions, after, propagate, automat_branch, description, stages, task_skeleton,
   ends, behavior, priority, fr / sheet / sheet_fr, params (as above, plus task_param = the mission.<field> the
   initializer fills, getter / wrap = integration.get<getter>Parameter and its ontology key, for a type no
-  initializer reads yet). An existing frag order cannot be re-scaffolded: add it to more models by hand.
+  initializer reads yet); "propagate" may name an existing entry to insert after (else appended: the last entry
+  gains its comma). {"fragorder": true, "existing": true, "name", "dbs", "models_level", "missions"} adds an
+  existing frag order to more Models.xml lists and writes nothing else.
 
 Spec keys (--example shows them; keys starting with _ are ignored):
   name, task                      required
@@ -561,9 +563,17 @@ def task_skeleton(spec, params, labels, frago=False):
                 "one with next-stage-when-done")
         L += [f'        <stage label="{xa(lab)}">', "            <behaviors>"]
         if frago and spec.get("behavior") and i == len(labels) - 1:
-            L += [f'                <behavior name="{xa(spec["behavior"])}" priority="{xa(spec.get("priority", "100000.0"))}">',
-                  "                    <!-- TODO: bind the skill parameters: <parameter name=\"…\"><variable>…</variable></parameter> -->",
-                  "                </behavior>"]
+            nswd = ' next-stage-when-done="true"' if spec.get("ends", True) else ""
+            L.append(f'                <behavior name="{xa(spec["behavior"])}"{nswd} priority="{xa(spec.get("priority", "100000.0"))}">')
+            bound = [p["dia-name"] for p, _, _, _ in params if p["dia-name"] in spec.get("_skill_params", ())]
+            for n in bound:
+                L += [f'                    <parameter name="{xa(n)}">', f"                        <variable>{xa(n)}</variable>",
+                      "                    </parameter>"]
+            rest = [n for n in spec.get("_skill_params", ()) if n not in bound]
+            if rest or not spec.get("_skill_params"):
+                L.append("                    <!-- TODO: bind the skill parameters"
+                         + (f" {', '.join(rest)}" if rest else "") + ": <parameter name=\"…\"><variable>…</variable></parameter> -->")
+            L.append("                </behavior>")
         elif frago:
             L.append(f"                <!-- TODO: behaviors of stage \"{xt(lab)}\" ({todo}), each with a priority "
                      f"(e.g. 100000.0) over the mission's skills on shared resources: FRAGORDERS.md §5 -->")
@@ -1029,6 +1039,15 @@ def edit_fragorder_lua(raw, reg, dt, init_lines, after, propagate, automat_branc
                           "        -- TODO: what the commander does: act, or forward to the subordinates with "
                           "integration.SendMessage( \"StartTask\", … ) / meKnowledge:sendDynamicMessage( \"FragOrder\", … )",
                           "        integration.cleanFragOrder( fragOrder )", "        return true"]
+    if propagate and isinstance(propagate, str):
+        hit = [ln for n, ln in reg.propagated if n == propagate]
+        if not hit:
+            raise SpecError(f"\"propagate\": {propagate} is not in fragOrdersToBePropagated")
+        if hit[0] == reg.propagated[-1][1]:
+            propagate = True  # the anchor is the last entry: append
+        else:
+            lines[hit[0]:hit[0]] = [f'    "{dt}",']
+            propagate = None
     if propagate:
         name, ln = reg.propagated[-1]
         m = re.match(r'^(\s*"[^"]*")(\s*,)?(.*)$', lines[ln - 1])
@@ -1041,6 +1060,52 @@ def edit_fragorder_lua(raw, reg, dt, init_lines, after, propagate, automat_branc
     return out.replace("\n", "\r\n") if crlf else out
 
 
+def add_existing(model, spec, ed):
+    """"existing": true: add an existing frag order to more Models.xml lists (models_level / missions), per DB."""
+    name = spec.get("name")
+    errors = []
+    dbs = [model.dbs[d] for d in (spec.get("dbs") or list(model.dbs)) if d in model.dbs]
+    lvl_spec, msn_spec = spec.get("models_level") or {}, spec.get("missions") or {}
+    todo = defaultdict(list)
+    for db in dbs:
+        if name not in db.fragorders_by_name:
+            errors.append(f"{db.name}: no frag order named \"{name}\" (\"existing\" only adds Models.xml entries)")
+            continue
+        for ref in lvl_spec.get(db.name) or []:
+            r = resolve_model(db, ref)
+            if isinstance(r, str):
+                errors.append(r)
+            elif name in db.model_entries[r]["level"]:
+                ed.notes.append(f"{db.name}: {r[0]} \"{r[1]}\" already lists it at model level")
+            else:
+                todo[db.name].append((r, None))
+        for ref, missions in (msn_spec.get(db.name) or {}).items():
+            r = resolve_model(db, ref)
+            if isinstance(r, str):
+                errors.append(r)
+                continue
+            for mi in missions:
+                fs = db.model_entries[r]["missions"].get(mi)
+                if fs is None:
+                    errors.append(f"{db.name}: {r[0]} model \"{r[1]}\" has no mission \"{mi}\"")
+                elif name in fs:
+                    ed.notes.append(f"{db.name}: {r[0]} \"{r[1]}\" already lists it under \"{mi}\"")
+                else:
+                    todo[db.name].append((r, mi))
+    for k in set(spec) - {"fragorder", "existing", "name", "dbs", "models_level", "missions"}:
+        if not k.startswith("_"):
+            ed.notes.append(f"\"existing\" mode ignores key \"{k}\"")
+    if errors:
+        raise SpecError("\n".join(errors))
+    for db in dbs:
+        if todo[db.name]:
+            text = ed.get(db.models_path)
+            for (k, mo), mi in todo[db.name]:
+                text = models_add(text, k, mo, name, mi)
+            ed.set(db.models_path, text)
+    return ed
+
+
 def scaffold_fragorder(model, spec, sword_types):
     ed = Edits(model)
     errors = []
@@ -1051,6 +1116,8 @@ def scaffold_fragorder(model, spec, sword_types):
         return cond
 
     reg = model.fragorder_lua()
+    if spec.get("existing"):
+        return add_existing(model, spec, ed)
     kind = spec.get("kind", "kernel")
     name, task = spec.get("name"), spec.get("task")
     need(kind in FO_KINDS, f"kind {kind} not in {FO_KINDS}")
@@ -1110,6 +1177,9 @@ def scaffold_fragorder(model, spec, sword_types):
         canon[prm["dia-name"]] = c or prm["type"]
         if canon[prm["dia-name"]] == "Enumeration":
             need(prm.get("values"), f"parameter {prm['name']}: Enumeration needs values")
+        if canon[prm["dia-name"]] == "Numeric" and kind != "kernel":
+            need(False, f"parameter {prm['name']}: a Numeric read in Lua is truncated (MIL_FragOrder GetIntegerParameter; no "
+                        "float getter): use kind kernel, or an Integer (e.g. a percentage) (FRAGORDERS.md §4)")
     catalog = getter_catalog(model)
     if kind in ("task", "immediate"):
         for prm in params:
@@ -1308,7 +1378,25 @@ def scaffold_fragorder(model, spec, sword_types):
             q = dict(prm)
             q["dia-name"] = prm.get("task_param", prm["dia-name"]) if kind == "task" else prm["dia-name"]
             tparams.append((q, inner, nullable, dflt))
-        ed.new(tp, task_skeleton(dict(spec, task=task), tparams, [lab for lab, _ in stages], frago=True))
+        sk = spec.get("behavior")
+        skp = model.entity_path(sk) if sk else ""
+        skill_params = re.findall(r'<parameter\s+name="([^"]+)"', ml.read(skp).split("<parameters>", 1)[-1].split("</parameters>", 1)[0]) \
+            if skp and os.path.isfile(skp) and "<parameters>" in ml.read(skp) else []
+        if sk and not os.path.isfile(skp):
+            ed.notes.append(f"behavior {sk} does not exist yet: write the skill (mission_check reports the missing entity)")
+        xml = task_skeleton(dict(spec, task=task, _skill_params=skill_params), tparams, [lab for lab, _ in stages], frago=True)
+        # line endings of the folder's existing tasks (dia5 is mostly CRLF; measure, do not assume)
+        folder = os.path.dirname(tp)
+        crlf = lf = 0
+        for f in (os.listdir(folder) if os.path.isdir(folder) else []):
+            if f.endswith(".xml"):
+                with open(os.path.join(folder, f), "rb") as fh:
+                    b = fh.read()
+                crlf += b.count(b"\r\n") > 0
+                lf += b.count(b"\r\n") == 0
+        if crlf > lf:
+            xml = xml.replace("\n", "\r\n")
+        ed.new(tp, xml)
         ed.notes.append(f"task skeleton {model.rel(tp)}: check its behavior and bind its parameters (TODO)")
     elif task and existing_task is None:
         ed.notes.append(f"task {task} does not exist and task_skeleton is false: write it before mission_check")

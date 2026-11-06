@@ -280,8 +280,15 @@ def check_frago_task(task, info, db, subj, model, rep, reg, strs):
     stoppers += strs.stoppers.get(task.name, [])
     last_term = task.terminators(task.stages[-1]) if task.stages else []
     if not task.disable_when_done:
+        mission_only = not info.fo.without_mission and info.listed and all(
+            mi is not None for lst in info.listed.values() for _, mi in lst)
         if not stoppers:
-            rep.warn(db.name, subj, f"frago task {task.name} has no disable-when-done and no stopTask( \"{task.name}\" ) anywhere: it runs until the next mission stop (FRAGORDERS.md §5)", tpath, 2)
+            msg = (f"frago task {task.name} has no disable-when-done and no stopTask( \"{task.name}\" ) anywhere: it runs "
+                   "until the next mission stop (FRAGORDERS.md §5)")
+            if mission_only:
+                rep.note(db.name, subj, msg + "; the order is available under missions only, so the mission stop is a defined end", tpath, 2)
+            else:
+                rep.warn(db.name, subj, msg, tpath, 2)
     elif task.stages and not last_term:
         rep.warn(db.name, subj, f"frago task {task.name} is disable-when-done but its last stage has no next-stage-when-done behavior: it never ends by itself", tpath, task.line_of(f'label="{task.stages[-1].label}"') if task.stages[-1].label else 2)
     leaf = task.name.rsplit(".", 1)[-1]
@@ -418,6 +425,36 @@ def resolve(fo, info, db, subj, model, rep, reg, strs, path, fol):
         for g, dn in init.reads:
             if dn not in dia_names:
                 rep.error(db.name, subj, f"initializer reads dia-name \"{dn}\" (get{g}Parameter), which is not a parameter of this frag order in {db.name}: the getter returns nil silently", fol, init.line)
+    if init is not None:
+        numeric = {p.dia_name for p in fo.params if (model.types.canonical(p.type) or p.type) == "Numeric"}
+        for g, dn in init.reads:
+            if dn in numeric and g == "Integer":
+                rep.warn(db.name, subj, f"initializer reads the Numeric parameter \"{dn}\" with getIntegerParameter, which truncates it (1.5 -> 1; no float getter exists): a float needs kind (c), the kernel path (FRAGORDERS.md §4)", fol, init.line)
+    if k == "b" and (info.readers or info.helpers):
+        reader_ents = {ml.entity_of_rel("/" + r) for r, _ in info.readers} | {ml.entity_of_rel("/" + r) for r in info.helper_callers}
+        reader_ents.discard(None)
+        # a query reader counts through the skills that call it; a world-class reader (PhaseLine, MeKnowledge) can be
+        # reached from any skill: then the check cannot be bounded and is skipped
+        kinds = {}
+        for e in reader_ents:
+            pth = model.entity_path(e)
+            head = ml.read(pth)[:400] if os.path.isfile(pth) else ""
+            kinds[e] = next((k for k in ("skill", "query", "task") if f"<{k}" in head), "other")
+        for q in [e for e, k in kinds.items() if k == "query"]:
+            reader_ents |= {x for x in (ml.entity_of_rel("/" + r) for r in strs.lua_callers(q)) if x}
+        dead = None if "other" in kinds.values() else []
+        for mo, mi in ([] if dead is None else info.listed.get("unit", []) + info.listed.get("crowd", [])):
+            if mi is None:
+                continue
+            msn = next((x for x in db.unit_missions if x.name == mi), None)
+            if msn is None or not model.task(msn.task_name):
+                continue
+            role = (db.model_entries.get(("unit", mo)) or db.model_entries.get(("crowd", mo)) or {}).get("role")
+            runs = ml.entity_closure(model, msn.task_name) | (ml.entity_closure(model, role) if role else set())
+            if not (runs & reader_ents):
+                dead.append(f"{mo} / {mi}")
+        if dead:
+            rep.warn(db.name, subj, f"listed under {len(dead)} mission(s) whose task (and role default task) runs none of its readers ({_short(sorted(r.rsplit('.', 1)[-1] for r in reader_ents), 4)}): there it is never read, never cleaned, and a later mission's reader consumes it: {_short(sorted(dead), 4)}", db.models_path)
     if k == "a":
         for tn in info.missing_tasks:
             rep.error(db.name, subj, f"initializer starts task {tn}: no such task (\"No behavior associated to DIA type\" error at order time)", fol, init.line)
@@ -510,6 +547,41 @@ def availability(fo, info, db, subj, model, rep, reg, fol):
     # crowd
     if info.family == "crowd" and not listed.get("crowd") and not fo.without_mission:
         rep.warn(db.name, subj, "crowd frag order (crowd task) but no crowd model lists it: no crowd can receive it", db.models_path)
+
+
+def fragorder_summary(fo, db, model, receiver=None):
+    """Lines printed for --fragorder: the resolved wiring and where the order is available."""
+    info = model.fragorder_info(db, fo)
+    out = [f"{db.name}: \"{fo.name}\" dia-type {fo.dia_type}, kind {info.kind}"
+           + (f", starts {', '.join(info.tasks)}" if info.tasks else "")
+           + (", propagated" if info.propagated else "") + (f", automat branch (FragOrder.lua:{info.automat_branch})" if info.automat_branch else "")
+           + (", available without mission" if fo.without_mission else "") + f"; checkpoint: {info.checkpoint_class}"]
+    rd = sorted({ml.entity_of_rel("/" + r) or r for r, _ in info.readers} | {ml.entity_of_rel("/" + r) or r for r in info.helper_callers})
+    if rd:
+        out.append(f"  readers: {_short(rd, 8)}")
+    for kind in ml.MODEL_SECTIONS.values():
+        lst = info.listed.get(kind, [])
+        by = {}
+        for mo, mi in lst:
+            by.setdefault(mo, []).append(mi)
+        for mo in sorted(by):
+            lvl = None in by[mo]
+            ms = sorted(x for x in by[mo] if x)
+            out.append(f"  {kind} \"{mo}\": " + ("model level" if lvl else "") + (" + " if lvl and ms else "")
+                       + (f"under {len(ms)} mission(s): {_short(ms, 6)}" if ms else ""))
+    if receiver:
+        hits = [k for k in db.model_entries if k[1] == receiver.split(":", 1)[-1] and (":" not in receiver or k[0] == receiver.split(":", 1)[0])]
+        for k in hits:
+            e = db.model_entries[k]
+            if fo.name in e["level"]:
+                out.append(f"  receiver {k[0]} \"{k[1]}\": model level, so every mission")
+                continue
+            missing = sorted(m for m, fs in e["missions"].items() if fo.name not in fs)
+            out.append(f"  receiver {k[0]} \"{k[1]}\": listed under {len(e['missions']) - len(missing)}/{len(e['missions'])} missions; "
+                       f"missing under: {_short(missing, 12) or 'none'}")
+        if not hits:
+            out.append(f"  receiver \"{receiver}\": no such model in {db.name}")
+    return out
 
 
 def check_fragorders_global(model, dbs, rep):
@@ -618,6 +690,7 @@ def main():
     ap.add_argument("--root", default=ml.DEFAULT_ROOT, help="sw.models root (or a scratch copy)")
     ap.add_argument("--sword", default=ml.DEFAULT_SWORD)
     ap.add_argument("-v", "--verbose", action="store_true", help="show notes")
+    ap.add_argument("--receiver", help="with --fragorder: a decisional model (\"unit:Name\" on a clash): the missions of it that list / lack the order")
     a = ap.parse_args()
     model = ml.load_model(a.root, a.model, a.sword)
     wanted = a.db.split(",") if a.db else list(model.dbs)
@@ -650,6 +723,12 @@ def main():
         check_global(model, dbs, rep)
     if a.all or a.all_fragorders:
         check_fragorders_global(model, dbs, rep)
+    if a.fragorder:
+        for db in dbs:
+            for fo in db.fragorders:
+                if a.fragorder in (fo.name, fo.dia_type):
+                    print("\n".join(fragorder_summary(fo, db, model, a.receiver)))
+        print()
     if not found:
         what = (f'mission "{a.mission}"' if a.mission else f"a mission with dia-behavior {a.task}" if a.task
                 else f'frag order "{a.fragorder}"' if a.fragorder else "missions")

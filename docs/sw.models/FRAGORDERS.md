@@ -35,7 +35,11 @@ mildb). Every row applies **per DB that has the frag order**, unless it says oth
 | `phy/Mission sheets/fragmentary orders/Locales/fr` | `<French name>.xml` + `.html` | mildb only; French name = the `frag-order` translation. The `.html` image paths keep the **English** name. Not checked. | `phy/Mission sheets/fragmentary orders/Pause movement.xml` |
 | `dia5/FragOrder.lua` | `fragOrderTaskInitializers`, `fragOrdersToBePropagated`, `fragOrder.executeAutomatFragOrder` | The only registry of frag-order behavior, `include`d once. **CRLF**; entries grouped by theme (insert next to a related entry, not sorted, not appended); initializer format `    [ "<dia-type>" ] = function( mission, fragOrder )` … `    end,`. Needed by kinds (a), (b), (f), (d) (§2); not by kind (c). | `dia5/Decisional.lua::include "FragOrder.lua"`, `dia5/FragOrder.lua::fragOrderTaskInitializers =`, `dia5/FragOrder.lua::fragOrdersToBePropagated =` |
 | dia5 frago task | `<family>/agent/tasks/frago/<Task>.xml` | Spark 1.5 task, no Lua (`MISSIONS.md` §3, §5 below). Folders: `dia5/common/agent/tasks/frago/`, `dia5/military/agent/tasks/frago/`, `dia5/security/agent/behaviors/frago/`, `dia5/crowd/behaviors/tasks/frago/`. | `dia5/common/agent/tasks/frago/WaitThere.xml` |
+| `phy/Reports.xml`, `wwt/Reports.xml`, `phy/Locales/fr/Reports_fr.ts` | `<report id key message>` | Only for a **new** `eRC_` report (kind (f), or a frago skill that reports): the key in **both** DBs (dia5 is shared: `build/checkreports.py` flags a dia5 key a DB lacks), id = max over both DBs + 1, contexts `<key>-message` / `<key>-details-title` in the `.ts`. Not written by the scaffold; reuse an existing report first. | `build/checkreports.py::eRC_`, `phy/Reports.xml::<report ` |
 | `phy/mappings/hla.xml` | `<fragOrders>` | Fixed pause / resume / cancel names; never touched by a new frag order. | `phy/mappings/hla.xml::<fragOrders>` |
+
+**Line endings, measured**: the physical XML files are LF; `dia5/FragOrder.lua` and most dia5 XML / Lua are CRLF (the
+repo stores them as is). Edit with the Edit tool or Python `newline=""`; `sed -i` in Git Bash rewrites CRLF to LF.
 
 ## 2. Kinds: how a frag order is wired
 
@@ -53,7 +57,7 @@ mildb). Every row applies **per DB that has the frag order**, unless it says oth
 | A change in how the **running mission's** skills behave | **(b) read by skills** | an **empty** initializer (without one, the kernel looks for a task named by the dia-type) + a reader in the skill or query | `dia5/FragOrder.lua::[ "Infiltrate" ] = function`, read by `dia5/common/agent/behaviors/skills/actions/MoveAndTakePosition.lua::getInfiltrateFragOrder` | The reader consumes it (`cleanFragOrder` / `getFirstFragOrderFromType`); read by nothing → **never cleaned** | Only if the reader persists the derived value |
 | An instantaneous effect (state, ROE, report) | **(f) immediate** | an initializer that acts, then `integration.cleanFragOrder( fragOrder )` | `dia5/FragOrder.lua::[ "SetSpeedLimit" ] = function` | At once | If the effect lives in the ODB / world (unit and crowd ROE: yes; `myself.*`: no) |
 | An order to a company that its platoons execute | **(d) automat** | the dia-type in `fragOrdersToBePropagated` (the platoons then run their **unit** kind), and/or a branch in `executeAutomatFragOrder` | `dia5/military/commander/skills/ManageFragOrder.lua::typeOrder == "Realign"` | Per the unit kind | Per the unit kind; Lua-only orders from the commander are lost |
-| An order to a crowd | **(e) crowd** | as for units, with a crowd frago task; crowd models | `dia5/FragOrder.lua::[ "CrowdWait" ] = function` → `dia5/crowd/behaviors/tasks/frago/Wait.xml`, stopped by `dia5/FragOrder.lua::stopTask( "crowd.behaviors.tasks.frago.Wait" )` | The opposite order, or a mission stop | No (as kind (c)) |
+| An order to a crowd | **(e) crowd** | as for units (kinds (a), (c) or (f): crowd brains are built from the same `BMAgent.bms`), with a crowd frago task; crowd models | `dia5/FragOrder.lua::[ "CrowdWait" ] = function` → `dia5/crowd/behaviors/tasks/frago/Wait.xml`, stopped by `dia5/FragOrder.lua::stopTask( "crowd.behaviors.tasks.frago.Wait" )` | The opposite order, or a mission stop | No (as kind (c)) |
 
 - **House style**: the review fix `6db5a91523` deleted the initializers and propagation entries that `39dacf24df` had
   added for two kind-(c) orders. Add an initializer only when the kind-(c) path cannot express the order.
@@ -102,6 +106,9 @@ mildb). Every row applies **per DB that has the frag order**, unless it says oth
 - **Types and converters**: the same registry and the same `functorsBM` table as missions (`MISSIONS.md` §2); frag
   orders always use the Spark (BM) visitor: `sim/Decision/DEC_Decision.cpp::void RegisterFragOrderParameters(`.
   A type without a converter is silently not passed (`mission_index.md` §1).
+- **No float getter**: the Lua side reads numbers with `getIntegerParameter`, which **truncates** a `Numeric` (1.5 →
+  1): `sim/Entities/Orders/MIL_FragOrder.cpp::static_cast< int >( realResult )`. A float parameter needs kind (c) (the
+  BM converter passes it), or an Integer such as a percentage.
 - **Kind (c)**: binding by `dia-name` = task parameter name, with the missions' absent-value rule (object → `NIL`,
   `<default>` skipped; scalar → nil → `<default>`): `MISSIONS.md` §2.
 - **Kinds (a), (f), (b)**: the Lua reads each value with `integration.get<Type>Parameter( fragOrder, "<dia-name>" )`
@@ -118,6 +125,11 @@ mildb). Every row applies **per DB that has the frag order**, unless it says oth
   most missions set none): `dia5/common/agent/tasks/frago/WaitThere.xml::priority="100000.0"` runs `actions.Wait`,
   which takes the motion resource (`dia5/common/agent/behaviors/skills/actions/Wait.lua::motion`), so the mission's
   movement stops.
+  - **Rank against other frago tasks too**: "Pause movement" (`WaitThere`) and "Move at any cost"
+    (`dia5/common/agent/tasks/frago/GoTo.xml::priority="100000.0"`) both hold motion at 1e5, the crowd pause at 1e6
+    (`dia5/crowd/behaviors/tasks/frago/Wait.xml::priority="1000000.0"`). Pick a distinct value (Pause should win:
+    below 1e5 for a move); equal priorities leave the winner to Spark (ask dai-navigator before relying on it).
+  - A frago behavior that acquires **no** resource needs no priority (`mission_check` warns only for resource holders).
 - **Ending**: `disable-when-done` (23 of 34), the opposite order's initializer calling `stopTask`, or any mission stop
   (`integration.stopTasks` → `spark.stopAll()` stops frago tasks too): `dia5/FragOrder.lua::[ "ResumeMovement" ] = function`,
   `int/CRTaskListener.lua::integration.stopTasks = function`. A frago task without `disable-when-done` and without an
@@ -125,7 +137,8 @@ mildb). Every row applies **per DB that has the frag order**, unless it says oth
 - **Listener side effects**: any task start sets `meKnowledge.currentTask` to that task's metadata (nil for frago
   tasks, so the mission's is lost); any task stop or finish runs `Cleanup` (resets `myself.blocked`,
   `myself.safetyAttitude`): `int/CRTaskListener.lua::meKnowledge.currentTask = task:getMetadata()`,
-  `int/CRTaskListener.lua::myself.safetyAttitude = eAmbianceMission_None`.
+  `int/CRTaskListener.lua::myself.safetyAttitude = eAmbianceMission_None`. No ada dia5 Lua reads `currentTask`
+  (measured): the first effect is inert in ada, the `Cleanup` resets are not.
 - **No reports**: stage and end reports go only to `myself.currentMission`, but stage labels must still be in
   Stages.xml (§1).
 - **Shape**: one stage (GetDecontaminated has two), no metadata class, no Lua. Recent kind-(c) example, with a
@@ -141,7 +154,11 @@ mildb). Every row applies **per DB that has the frag order**, unless it says oth
   Commander has its own: `dia5/security/commander/behaviors/skills/ManageFragOrder.lua`.
 - **Propagation**: a propagated order is sent to each subordinate with two filters. **Echelon**: `CrossDepartureLine`
   is not sent to scouts, `AttendreSePoster` goes to the first echelon only. **Availability on the subordinate's
-  model**: a failure is silently skipped.
+  model**: a failure is silently skipped. The candidates are the company's **communicating** subordinates, CP
+  included (`dia5/military/commander/roles/Company.xml::common.commander.queries.getCommunicatingSubordinateUnits`):
+  jammed or radio-silent ones are skipped too. With **no** candidate the skill returns at once, so the commander's
+  copy is never cleaned and is re-evaluated every tick:
+  `dia5/military/commander/skills/ManageFragOrder.lua::if #self.params.entities == 0 then`.
   - Anchors: `dia5/military/commander/skills/ManageFragOrder.lua::local send = typeOrder ~= "CrossDepartureLine"`,
     `dia5/military/commander/skills/ManageFragOrder.lua::if self.params.fragOrder:isAvailableToAgent( self.params.entity ) then`.
   - The send is a **Lua message** into the subordinate's `myself.fragOrders`, followed by a clean of the commander's
@@ -152,7 +169,13 @@ mildb). Every row applies **per DB that has the frag order**, unless it says oth
 - **Hazard: unit tasks run on the commander.** Every brain is built from `dia5/BMAgent.bms` over all of dia5
   (`dia5/BMAgent.bms::spark.createBrain`). An order that is **not** propagated, and whose dia-type names a task, is
   started **in the commander's brain**: `dia5/FragOrder.lua::if not integration.mustBePropagate( fragOrder ) and spark.getBehavior( orderType ) then`.
-  A unit kind-(c) order must be propagated, or kept out of automat models and `available-without-mission="false"`.
+  A unit kind-(c) order must be propagated, or kept out of automat models and `available-without-mission="false"`,
+  or be kind (a) with a dia-type that names no task (the fallback finds no behavior) and, when it is
+  `available-without-mission`, an initializer guard `integration.isFragOrderAvailable( myself, "<dia-type>" )` (true only
+  for models that list it at model level): `int/CommunicationIntegration.lua::integration.isFragOrderAvailable = function`.
+- **Reports from units under an engaged automat become messages**: `meKnowledge:displayReport` goes through
+  `int/CRTaskListener.lua::integration.pionRC = function`, which sends a `DEC_Message` while the automat is engaged;
+  call `integration.report` for a real report.
 - **Propagation list names** must be exact dia-types. Today 26 match none, mostly client or legacy names; a misspelled
   one is silently never propagated.
 - **Crowds** run the unit `ManageFragOrder` skill. Their role maps the frag-order type to the unit class. Their frago
@@ -163,7 +186,9 @@ mildb). Every row applies **per DB that has the frag order**, unless it says oth
 ## 7. Readers (kind (b)) and other hard-coded dia-types
 
 Readers are named by dia-type string, so a rename or a new reader must find them:
-- **Poll helpers** in `FragOrder.lua` (e.g. `dia5/FragOrder.lua::fragOrder.getInfiltrateFragOrder = function`) and their
+- **Poll helpers** in `FragOrder.lua` (e.g. `dia5/FragOrder.lua::fragOrder.getInfiltrateFragOrder = function`; they
+  clean the **raw** kernel order, `dia5/FragOrder.lua::integration.cleanFragOrder( order )`, whose `.source` is nil at
+  `OnEndTick`: only the query's own clean of the returned knowledge removes it) and their
   `get*FragOrder` queries.
 - `int/ToolsQueries.lua::integration.query.getFirstFragOrderFromType = function`.
 - `dia5/common/agent/world/MeKnowledge.lua::getFragOrder = function( self, type )`.
@@ -195,7 +220,11 @@ checks the "Nothing" row in the working tree, plus frago tasks without a priorit
 for the opposite of what it runs (`SafetyDismount`), parameters never read, and the polling-query merge bug. Its kind
 codes: `a` `b` `c` `c2` (task group) `d` `f` as in §2 (crowd orders are `a` / `f` with a crowd task), `b?` empty
 initializer read by nothing, `f?` clean-only initializer read by nothing, `none` handled by nothing. Propagation to
-subordinates: a WARN when an automat model's subordinates all lack the order, a note when only some do.
+subordinates: a WARN when an automat model's subordinates all lack the order, a note when only some do. Kind (b): a
+WARN for missions that list the order but whose task and role default task run none of its readers (skipped when a
+reader is a world class). `--fragorder` always prints the resolved wiring and the models listing it; `--receiver
+"<model>"` lists that model's missions that lack it. Not linted: undefined globals in initializers (e.g.
+`dia5/FragOrder.lua::reportFunction( "eRC_SpeedLimitRemoved", speedLimit )`), French name conventions.
 
 ## 9. Build order (designer)
 

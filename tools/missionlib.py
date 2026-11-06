@@ -662,6 +662,7 @@ class Dia5Strings:
         self.where = defaultdict(list)
         self.stoppers = defaultdict(list)  # task name -> [(rel, line)] of stopTask / spark.stop( "task" )
         self.calls = defaultdict(set)  # identifier -> rel paths that contain it (helper callers)
+        self.lua = {}  # rel -> comment-free Lua text (query callers)
         dia5 = model.dia5
         skip = os.path.join(dia5, "FragOrder.lua")
         rx = re.compile(r'"([^"\n]{2,120})"|>\s*([^<>\n]{2,120}?)\s*<')
@@ -678,6 +679,8 @@ class Dia5Strings:
                 else:
                     txt = re.sub(r"<!--.*?-->", lambda m: "\n" * m.group(0).count("\n"), txt, flags=re.S)
                 rel = model.rel(p)
+                if f.endswith(".lua"):
+                    self.lua[rel] = txt
                 for m in rx.finditer(txt):
                     s = m.group(1) or m.group(2)
                     self.where[s].append((rel, line_of(txt, m.start())))
@@ -685,6 +688,10 @@ class Dia5Strings:
                     self.stoppers[m.group(1)].append((rel, line_of(txt, m.start())))
                 for ident in set(re.findall(r"\b(get\w*FragOrder\w*)\b", txt)):
                     self.calls[ident].add(rel)
+
+    def lua_callers(self, name):
+        """rel paths of Lua files that mention a dotted entity name (e.g. a query called as a.b.q{…})."""
+        return [r for r, txt in self.lua.items() if name in txt]
 
     def uses(self, s, exclude=()):
         return [w for w in self.where.get(s, []) if w[0] not in exclude]
@@ -704,6 +711,24 @@ def skill_resources(model, name, depth=6, seen=None):
     for t in re.findall(r'<link\b[^>]*?\btarget="([^"]+)"', txt):
         out |= skill_resources(model, t, depth - 1, seen)
     return out
+
+
+def entity_closure(model, name, depth=8, seen=None):
+    """Entities a task or skill runs, through <behavior name> and <link target> (XML only; Lua calls not followed)."""
+    seen = set() if seen is None else seen
+    if name in seen or depth < 0:
+        return seen
+    seen.add(name)
+    p = model.entity_path(name)
+    if not os.path.isfile(p):
+        return seen
+    txt = read(p)
+    refs = re.findall(r'<behavior\b[^>]*?\bname="([^"]+)"', txt) + re.findall(r'<link\b[^>]*?\btarget="([^"]+)"', txt)
+    if re.search(r"<role\b", txt[:600]):  # a role: its default task, and the parent role's
+        refs += [x.strip() for x in re.findall(r"<extends>([^<]+)</extends>", txt)]
+    for t in refs:
+        entity_closure(model, t, depth - 1, seen)
+    return seen
 
 
 def entity_of_rel(rel):

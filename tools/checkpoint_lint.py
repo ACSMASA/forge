@@ -264,12 +264,32 @@ def lint_skill(path, xml_text, hashes, rules, model_root, keep_state=frozenset()
     seen_fields = set()
     for name, a, b in fns:
         for rm in READER.finditer(code, a, b):
-            for m in re.finditer(r"\bself\.(\w+)\s*=(?!=)", code[rm.end():b]):
+            # the value the reader returns: `local v = …reader(` / `self.v = …reader(`; the effect is what is set in the
+            # `if v …` / `if …reader(…)` block that follows, or computed from v
+            ls = code.rfind("\n", a, rm.start()) + 1
+            lhs = re.match(r"\s*(?:local\s+)?((?:self\.)?\w+)\s*=", code[ls:rm.start()])
+            var = lhs.group(1) if lhs else None
+            spans = []
+            if var:
+                for im in re.finditer(rf"\bif\b[^\n]*\b{re.escape(var)}\b", blank[rm.end():b]):
+                    s0 = rm.end() + im.start()
+                    spans.append((s0, min(block_end(blank, s0), b)))
+            else:
+                im = re.search(r"\bif\b", blank[ls:rm.start()])
+                if im:
+                    s0 = ls + im.start()
+                    spans.append((s0, min(block_end(blank, s0), b)))
+            cands = []
+            for s0, s1 in spans:
+                cands += [(m, s0) for m in re.finditer(r"\bself\.(\w+)\s*=(?!=)", code[s0:s1])]
+            if var:
+                cands += [(m, rm.end()) for m in re.finditer(rf"\bself\.(\w+)\s*=(?!=)[^\n]*\b{re.escape(var)}\b", code[rm.end():b])]
+            for m, base in cands:
                 field = m.group(1)
-                if field in keys or field in seen_fields or field == "params":
+                if field in keys or field in seen_fields or field == "params" or f"self.{field}" == var:
                     continue
                 seen_fields.add(field)
-                add("order-effect-not-persisted", code, rm.end() + m.start(),
+                add("order-effect-not-persisted", code, base + m.start(),
                     f"self.{field} is set after reading a frag order ({rm.group(1)}, line {lineno(code, rm.start())}) but "
                     "not persisted: the order is consumed and the queue is not saved, so the effect is lost on resume; "
                     "persist the derived value (CHECKPOINTS.md §4, ManageDiving targetDepth)")
@@ -303,6 +323,7 @@ def fragorder_targets(a, ents, notes):
     """Skills to lint for a frag order (the started tasks' closure + the readers), and frago-task-lost notes."""
     model = ml.load_model(a.root, a.model)
     skills, found = {}, 0
+    own = fragorder_targets.own = set()  # files that name this order (its readers): findings elsewhere are reused skills
     for db in model.dbs.values():
         for fo in db.fragorders:
             if a.fragorder not in (fo.name, fo.dia_type):
@@ -310,6 +331,12 @@ def fragorder_targets(a, ents, notes):
             found += 1
             info = model.fragorder_info(db, fo)
             where = (model.rel(db.missions_path), fo.line)
+            notes.append((*where, f"{db.name} \"{fo.name}\": kind {info.kind}, checkpoint class: {info.checkpoint_class} (CHECKPOINTS.md §7.4)"))
+            if info.init is not None and info.init.myself:
+                notes.append((model.rel(model.fragorder_lua().path), info.init.line,
+                              f"the {fo.dia_type} initializer writes myself.{', myself.'.join(info.init.myself)}: Lua-only, lost on resume (mirror it in the ODB / world or accept the loss)"))
+            own.update(r for r, _ in info.readers + info.commander_uses)
+            own.update(info.helper_callers)
             for tn in info.tasks:
                 if tn in ents:
                     for e in closure(ents, tn):
@@ -376,18 +403,22 @@ def main():
     findings = []
     if "frago-task-lost" in rules:
         for f, line, msg in notes:
-            print(f"NOTE frago-task-lost  {f}:{line}: {msg}")
+            tag = "frago-task-lost" if "not resumed" in msg else "fragorder"
+            print(f"NOTE {tag:16} {f}:{line}: {msg}")
     for lua, xml_text in targets:
         findings += lint_skill(lua, xml_text, hashes, rules, a.root, keep_state)
     if a.summary:
         from collections import Counter
         c = Counter(f[0] for f in findings)
-        c["frago-task-lost"] = len(notes) if "frago-task-lost" in rules else 0
+        c["frago-task-lost"] = sum(1 for n in notes if "not resumed" in n[2]) if "frago-task-lost" in rules else 0
         for r in RULES:
             print(f"{r:26} {c.get(r, 0)}")
     else:
+        own = getattr(fragorder_targets, "own", None) if a.fragorder else None
         for rule, f, line, msg in findings:
-            print(f"WARN {rule:13} {f}:{line}: {msg}")
+            tag = " [reused skill: it reads another order, not this one]" if (
+                own is not None and rule == "order-effect-not-persisted" and f not in own) else ""
+            print(f"WARN {rule:13} {f}:{line}: {msg}{tag}")
     print(f"\n{len(findings)} finding(s) in {len(targets)} skill Lua file(s) (upper bounds: confirm in the code; "
           "rules in docs/sw.models/CHECKPOINTS.md §3)")
 

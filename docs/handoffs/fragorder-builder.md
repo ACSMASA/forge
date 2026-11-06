@@ -523,7 +523,7 @@ Path aliases (as in `mission-builder.md`):
 - [x] **11. Dry review of the agent file** by a general-purpose agent: it reads the file and the kit only, and lists
   contradictions, missing anchors and steps the tools cannot do. Fix them. (Cheap; it catches prompt gaps before
   validation.)
-- [ ] **12. Validation + fix pass.** Run each scenario with a general-purpose agent that reads and follows the agent
+- [x] **12. Validation + fix pass.** Run each scenario with a general-purpose agent that reads and follows the agent
   file, on a scratch copy (`--root`). Record PASS / FAIL in the notes §12, then fix the kit, tools and prompt and rerun
   the failures.
   - (a) **Unit, kind (a), reuse:** a new frag order that reuses an existing frago task with another parameter set
@@ -613,3 +613,7 @@ Path aliases (as in `mission-builder.md`):
 - 2026-11-06 step 11: dry review by a general-purpose agent: 21 findings (1 blocker: unescaped pipes in the grep
   recipes), all fixed in the prompt and the scaffold (new `kind: automat`; no clean / no `return true` in the branch
   of a propagated order). Notes §11.
+- 2026-11-06 step 12: 7 scenarios, all PASS (a, c, f with deviations; notes §12). Fix pass from their feedback:
+  mission_check summary / `--receiver` / readers per mission; checkpoint_lint guarded-block rule (41 → 15) and
+  class notes; scaffold `existing` mode, propagation anchor, better skeleton, Numeric refusal; kit (FRAGORDERS §1–§8,
+  CHECKPOINTS §7.3–§7.4, sw.sword THEMES) and both prompts. mission_index rebuilt. **Restart Claude Code.**

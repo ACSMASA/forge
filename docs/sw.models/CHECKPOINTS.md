@@ -57,7 +57,7 @@ Written from sw.models `master` @ `d2f78fafcd`, sw.sword `master` @ `51bdc0ec9e`
 | **Parent link lost**: the resumed task is started by the sim, not by its automat | `TaskDone` / commander bookkeeping that relies on `myself` state is gone | `int/SimulationIntegration.lua::myself.currentMission = task` | mirror needed `myself` data into the Default skill's state |
 | **Stage-shared `seqStage` tables**: behavior *i* of every sequential stage gets the same persisted table | `self:getPersistentState()` in stage 2 sees stage 1's data | `spark/task.lua::stageState = taskState[ key ]` | prefer `scripts.getSkillState`; clear what you write |
 | **Never-cleared skill states**: nothing clears them on task stop | the next run of the same skill with equal params starts from old data | `int/SimulationIntegration.lua::integration.clearSkillState = function( node )` | `scripts.clearSkillState( self )` in `destroy` and when the skill completes |
-| **State left by a mission that is not resumed**: `destroy` never ran before the save, and the saved mission is dropped (invalid parameter, automat mission, **any frago task**) or replaced after resume | a later skill with equal params reads the old state as if it resumed | `sim/CheckPoints/MIL_CheckPointManager.cpp::WriteMissions` | treat a saved deadline older than one tick as stale (`utilities.getTickDurationInSeconds()`), or store the mission's start date with the state |
+| **State left by a mission that is not resumed**: `destroy` never ran before the save, and the saved mission is dropped (invalid parameter, automat mission, **any frago task**) or replaced after resume | a later skill with equal params reads the old state as if it resumed | `sim/CheckPoints/MIL_CheckPointManager.cpp::WriteMissions` | treat a saved deadline older than a few ticks (a resumed skill is created one or two ticks after the load, §7.1 Timing) as stale (`utilities.getTickDurationInSeconds()`), or store the mission's start date with the state |
 | **Persisting `NIL`** (the absent-parameter sentinel) | serialized as `{}`, reloaded as an empty table: `x ~= NIL` becomes true | `spark/compatibility.lua::setsharedglobal( "NIL"` | persist a boolean "absent" instead |
 | **Non-finite numbers**: `tostring( math.huge )` gives a name such as `inf`, reloaded as a global (nil) | the value becomes nil | `int/SimulationIntegration.lua::return tostring( v )` | do not persist infinities / NaN |
 | **Frag order lost**: a queued order, or the frago task it started (kinds (a), (c), (e) of `FRAGORDERS.md` §2) | the order's effect disappears: the unit resumes its mission as if the order had never been given | `spark/behavior.lua::activeBehaviors = {},` | none generic: the Lua-side design in §7; or tell the user the order must be given again |
@@ -242,8 +242,14 @@ Proposal only (unified diff in the builder's answer, never written).
 
   Any other value (sim types: equipment, resource or dotation types in 7 frago tasks; CBRNProtection; objects without
   a rebuild helper) → **do not record**, and trace "not checkpointable".
-- **Forget**: one module-level listener table, `willStop` / `interrupted` → remove the task's record (a finish,
-  failure, opposite order or mission stop all end in `willStop`).
+- **Forget**: one module-level listener table, **`willStop` only** → remove the task's record (a finish, failure,
+  opposite order or mission stop all end in `willStop`). Not `interrupted`: it also fires when the same task is started
+  again (`spark/behavior.lua::re-scheduled to start`).
+- **Shadowing**: inside `fragOrder.startFragOrderTask` the parameter `fragOrder` hides the module table, so the record
+  helpers must be file locals: `dia5/FragOrder.lua::fragOrder.startFragOrderTask = function( fragOrder )`.
+- **Floats and headings**: a `Numeric` cannot be recorded through the Lua getters (truncated, `FRAGORDERS.md` §4); a
+  Heading is read as integer degrees with `integration.getIntegerParameter` and rebuilt with
+  `integration.copyAndRotateDirection`.
 - **Resume** once per brain from `dia5/common/agent/queries/getFragOrders.lua::local ordres_recus = integration.getOrdersCategory()`
   (polled every tick by every unit, automat and crowd role that handles frag orders). Behind a guard in `myself`
   (not persisted, so it is nil after a load), it does three things:
@@ -278,5 +284,6 @@ Proposal only (unified diff in the builder's answer, never written).
 Builder rule:
 - Before proposing the Lua-side helper, check whether it already exists on the branch (grep
   `integration.getPersistentState( "fragOrder"` in `dia5/`). If it exists, add the new order's record call (and the
-  converter case it needs); if not, write the helper once.
+  converter case it needs). If not, the helper changes existing code (`startFragOrderTask`, `getFragOrders`): propose
+  it as a diff, written once when the user asks (a request that the order "must survive a checkpoint" counts).
 - Always state what stays lost: queued orders, side effects, values that cannot be converted.

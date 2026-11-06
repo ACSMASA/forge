@@ -304,3 +304,42 @@ Validated on a scratch copy of model ada (from master @ `d2f78fafcd`):
   a proposal unless it exists (insert-only rule); client branches via the CHECKPOINTS §6 one-call recipe; adding an
   existing order to models = hand edits after agreement; `--model`; XML parse command; `ant check`; on master run
   clarify + critique, then stop.
+
+## 12. Step 12: validation scenarios + fix pass
+
+Each scenario: a general-purpose agent reading and following the agent file (g: sw-models-navigator), on its own
+fresh non-git copy of model ada (master @ `d2f78fafcd`); no write under `C:/MASARepo/`.
+
+| Scenario | Result | Outcome |
+|---|---|---|
+| (a) unit, reuse | PASS (deviation) | Flagged "Move at any cost" / Pause movement and the **orphan** `GoToAndWait` task (started by nothing, never ended); completed that task (wait stage, `disable-when-done`, priority 1e4 < Pause) and wired "Reach a point and wait" as kind (c) (house style) instead of a kind-(a) initializer. Lint-clean; "task lost", design B with measured radius. |
+| (b) new task + stateful skill | PASS | Kind (a) `ObserveSector` + `WatchSector` skill (absolute start time, ids seen, count, `reported` guard, cleared in destroy); lint-clean; recommends Lua-side (B does not cover (a)), helper as a proposal with measured radius; new report by hand. |
+| (c) mission-only reader | PASS (deviation) | Models.xml under "COMMON - Move" only. Chose kind (c), not (b): the Lua getters truncate a Numeric (verified, `MIL_FragOrder.cpp` `static_cast< int >`). Found the kernel speed clamp (verified) and said the factor only offsets slowdowns. |
+| (d) automat | PASS | Kind (f) + propagation; the automat model and all 12 subordinate unit models list it; commander filters (communicating subordinates, CP, availability) checked; report vs message (`pionRC`) caught. |
+| (e) crowd | PASS | Crowd models, under "Crowd - Move to" only (needs a mission), task in `crowd/behaviors/tasks/frago/`, persisted-deadline skill; Lua-side recommended. |
+| (f) duplicate | PASS (deviation) | Said "Pause movement" exists (both DBs, WaitThere) first; no new order. Then added Models.xml entries by hand because the harness told it to choose for the user. |
+| (g) kit only | PASS | Both answers from the kit in ~21 calls, incl. "the order is refused: the platoon's move missions do not list it" and the Lua-side fix for Pause movement. |
+
+**Fixes applied from the feedback** (all scenarios PASS, so no rerun; the fixes were re-validated by dry runs):
+- `mission_check`: `--fragorder` prints the resolved wiring and listing models; `--receiver`; a kind-(b) order listed
+  under missions whose task and role default task run no reader (query readers followed through their Lua callers,
+  skipped for world-class readers; 2 true positives: Disengage); a mission-only order ending at the mission stop is a
+  note; Numeric read with `getIntegerParameter` warned.
+- `checkpoint_lint`: `order-effect-not-persisted` only inside the block guarded by the reader result or computed from
+  it (41 → 15 findings, MoveAndTakePosition false positives gone); `--fragorder` prints the class and the
+  initializer's `myself.*` writes, and tags findings of reused skills.
+- `mission_scaffold`: `"existing": true` (Models.xml only); `propagate` may name an anchor (no edit of existing
+  lines); task skeleton with the folder's line endings, `next-stage-when-done` when the task ends, same-name
+  parameters bound, a note when the behavior skill does not exist; Numeric refused outside kind kernel.
+- Kit: FRAGORDERS §1 Reports row + line endings, §2 crowd kinds, §4 no float getter, §5 priority ladder / no-resource
+  tasks / `currentTask` inert, §6 communicating subordinates + early return + `pionRC` + third wrong-brain remedy, §7
+  poll helpers clean the raw order, §8 tool lines; CHECKPOINTS §7.3 forget on `willStop` only, shadowing, floats /
+  headings, stale threshold "a few ticks", §7.4 helper = proposal written when asked; sw.sword THEMES speed clamp.
+- Prompts: builder (tool outputs, `existing` mode, non-git root, wrong brain incl. kind (f), floats, feasibility,
+  orphan tasks, reused-task edits, reports, priorities, `after` / `propagate`, line endings and `sed -i`, process
+  substitution, narrow `diff -rq`); navigator (`--fragorder` in both tools, `--receiver`, reader-per-mission rule).
+
+**Not done (recorded, low value or out of scope):** lint undefined globals in initializers (`RemoveSpeedLimit`
+`speedLimit`; listed as not linted in FRAGORDERS §8); French name conventions; a sheet-only regeneration mode;
+`lost-timer` on unbound `delay` (upper bound, documented); `build/checkreports.py` is Python 2; a persisted-deadline
+example for CHECKPOINTS §4 (the scenario skills live only in scratch copies).
