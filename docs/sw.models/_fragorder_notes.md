@@ -225,3 +225,36 @@ within a DB. Cross-DB id consistency is already broken (92 ids), so the tool can
   task labels (reuse the mission scaffold's stage code); the type → getter + ontology table.
 - **Step 4:** the Lua-side design must work with `Behavior.start` clearing state: resume with `spark.resume`, not
   `start`.
+
+## 6. Step 6: `mission_check --all-fragorders` triage
+
+Read at sw.models `master` @ `d2f78fafcd`, sw.sword `master` @ `51bdc0ec9e`. Result: 23 errors, 69 warnings, 182 notes
+(missions unchanged: the 297 findings of the previous `--all` are all still reported, byte-identical).
+
+**Kinds found** (tool codes): mildb a 25, b 15, c 14, c2 7, d 3, f 35; wwt a 25, b 11, b? 4, d 1, f 22, none 6.
+They agree with step 1 once crowd orders (e) are counted inside a / f and the direct starts are added.
+
+**Seed anomalies, all reported:** wwt `SafetyPauseMovement` / `SafetyResumeMovement` handled by nothing (+4 other
+wwt `Rep_OrderConduite_*`, also never available); security commanders + `Realign` (startTask → kernel path, no task);
+5 wwt VSRAM initializers starting missing tasks; 49 initializer keys for dia-types in no DB (notes); the 4 unread
+empty initializers in wwt (`GoTo*Area`, `LendEquipment`; `SupportWithDirectFire` is in no DB, so it is one of the 49);
+propagation names `GoTo`, `Rep_OrderConduite_MettreTenueNBC`, `ActivateNBCProtection`, `ProvideIndirectFire` (+ new:
+`DeactivateNBCProtection`); 5 frago tasks never started (GoToAndWait and security WaitThere are only stopped);
+`SafetyDismount` runs Mount; `getFragOrders.lua` `resSize`; `integration.isTask = fragOrder.isTask` (nil).
+
+**Parser facts found while triaging** (kept in the code):
+- `detachUnit` (DetachUnit2/3) and others start their task **directly** (`common.agent.tasks.frago.DetachUnit:start(
+  mission )`) and clean, instead of returning `true`: counted as kind (a). The decisional index now shows them.
+- The ROE parameter `orderConduiteChangerReglesEngagement_` is read through a registered C++ getter
+  (`int/FragOrderIntegration.lua` `GetorderConduiteChangerReglesEngagement_`), never as a quoted string: the
+  "never read" rule greps the bare word in the integration layer.
+- `CancelMission` is named by commander code only, but its unit initializer acts: kind (f), not (b).
+
+**False positives removed:** priority warnings only when the behavior (or its links) acquires a resource (33 → 16);
+propagation to subordinates is a WARN only when **every** subordinate model of an automat model lacks the order
+(53 → 17), a note otherwise; skipped when an automat branch forwards the order itself.
+
+**Deviation from the plan:** "Pause movement" is not clean. The 2 warnings are true positives: automat model
+"Aviation bomber squadron" (mildb) lists it under `COMMON - Move`, but its only subordinate unit model (also named
+"Aviation bomber squadron") lists it under none of its 6 missions; same for wwt "Test company". Its own wiring
+(initializer → `common.agent.tasks.frago.WaitThere`, lists, sheets, `.ts`) is clean.

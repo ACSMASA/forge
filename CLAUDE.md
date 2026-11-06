@@ -43,7 +43,7 @@ and `sw.models/data/data/models/ada/physical/worldwide-tests/`; integration Lua 
 | `spark.*`, `sw.ai.*`, shared global; validator message | `dai_lua_index.md` §1–§3; §4 (code or message fragment) | directai spark plugin / validator | dai |
 | Physical XML attribute meaning | no index: grep `attribute( "name"` in sw.sword `src/libraries` | the C++ reader | sword |
 | Unit mission: anatomy / build / check | `docs/sw.models/MISSIONS.md` §1 files per DB, §2 parameters, §5 checks; `mission_index.md` §2; `tools/mission_check.py`, `tools/mission_scaffold.py` | Missions.xml, Models.xml, task XML | models |
-| Frag order: anatomy / kinds / build / check | `docs/sw.models/FRAGORDERS.md` §1 files per DB, §2 kinds, §3 availability, §6 automats / crowds, §8 checks; `CHECKPOINTS.md` §7 save / resume fix pair | Missions.xml `<fragorders>`, Models.xml, `dia5/FragOrder.lua`, frago task XML | models (delivery: sword) |
+| Frag order: anatomy / kinds / build / check | `docs/sw.models/FRAGORDERS.md` §1 files per DB, §2 kinds, §3 availability, §6 automats / crowds, §8 checks; `CHECKPOINTS.md` §7 save / resume fix pair; `tools/mission_check.py` --fragorder | Missions.xml `<fragorders>`, Models.xml, `dia5/FragOrder.lua`, frago task XML | models (delivery: sword) |
 | Checkpoint safety of a behavior | `docs/sw.models/CHECKPOINTS.md` §3 hazards, §4 conventions, §6 sim-side gaps; `tools/checkpoint_lint.py` | the skill Lua; `integration.*State` in `SimulationIntegration.lua` | models (sim side: sword) |
 | A theme, no name yet | the kit's `THEMES.md` (FR/EN words, theme → files, gotchas) | the files of the row | kit owner |
 

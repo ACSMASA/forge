@@ -29,6 +29,9 @@ import sys
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from missionlib import scan_fragorder_lua  # noqa: E402  (FragOrder.lua parser, shared with mission_check)
+
 SPARK_NS = "http://www.masagroup.net/directai/spark/lang/1.5"
 ROOT_RE = re.compile(r"<([A-Za-z][\w.-]*)\b([^>]*)>")
 NAME_RE = re.compile(r'\bname="([^"]+)"')
@@ -243,33 +246,6 @@ def scan_physical(model_dir):
                         d[counter][u.get("decisional-model")] += 1
         dbs.append(d)
     return dbs
-
-
-def scan_fragorder_lua(path):
-    """Parse FragOrder.lua: initializers (dia-type -> started tasks), propagated list, automat-handled dia-types."""
-    res = {"init": {}, "propagated": set(), "automat": set()}
-    if not os.path.isfile(path):
-        return res
-    txt = strip_lua(read(path))
-    m = re.search(r"fragOrdersToBePropagated\s*=\s*\{(.*?)\}", txt, re.S)
-    if m:
-        res["propagated"] = set(re.findall(r'"([^"]+)"', m.group(1)))
-    m = re.search(r"fragOrder\.executeAutomatFragOrder\s*=\s*function(.*?)\nend", txt, re.S)
-    if m:
-        res["automat"] = set(re.findall(r'orderType\s*==\s*"([^"]+)"', m.group(1)))
-    start = txt.find("fragOrderTaskInitializers")
-    if start >= 0:
-        body = txt[start:]
-        keys = list(re.finditer(r'\[\s*"([^"]+)"\s*\]\s*=\s*function', body))
-        for i, k in enumerate(keys):
-            block = body[k.end(): keys[i + 1].start() if i + 1 < len(keys) else len(body)]
-            if i + 1 == len(keys):
-                block = block.split("\n}\n", 1)[0]
-            starts = set(re.findall(r'return\s+true\s*,\s*"([^"]+)"', block))
-            if re.search(r"return\s+true\s*(?:$|\n|end|\))", block):
-                starts.add(k.group(1))
-            res["init"][k.group(1)] = starts
-    return res
 
 
 # ---------------------------------------------------------------------------------------------------------------------

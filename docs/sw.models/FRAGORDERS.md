@@ -190,8 +190,12 @@ the readers per frag order (from step 8 of `docs/handoffs/fragorder-builder.md`)
 | order execution | kind (c) task missing ("unknown behavior"); initializer returning a missing task (`error`) | Lua error |
 | **Nothing** | dia-type handled by nothing (no initializer, no task); an initializer reading a dia-name the DB lacks; a kind-(b) order read by nothing; a propagation name that is no dia-type; a propagated order missing from the subordinate models; a unit task reachable on a commander; a frago task that never ends; `Missions_fr.ts` entries, fr sheets, attribute order, category; mildb / wwt consistency | — |
 
-`tools/mission_check.py --fragorder` covers the "Nothing" row in the working tree (from step 6 of
-`docs/handoffs/fragorder-builder.md`).
+`tools/mission_check.py --fragorder "<name or dia-type>"` (or `--all-fragorders`; `--all` also covers missions)
+checks the "Nothing" row in the working tree, plus frago tasks without a priority on a resource, a frago task named
+for the opposite of what it runs (`SafetyDismount`), parameters never read, and the polling-query merge bug. Its kind
+codes: `a` `b` `c` `c2` (task group) `d` `f` as in §2 (crowd orders are `a` / `f` with a crowd task), `b?` empty
+initializer read by nothing, `f?` clean-only initializer read by nothing, `none` handled by nothing. Propagation to
+subordinates: a WARN when an automat model's subordinates all lack the order, a note when only some do.
 
 ## 9. Build order (designer)
 

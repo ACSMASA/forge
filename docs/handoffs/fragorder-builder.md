@@ -415,7 +415,7 @@ Path aliases (as in `mission-builder.md`):
   - The checker passes. Tell the user to restart.
 
 ### Phase B — tools
-- [ ] **6. `missionlib.py` + `mission_check.py` frag-order checks.**
+- [x] **6. `missionlib.py` + `mission_check.py` frag-order checks.**
   - **Parse:**
     - frag orders per DB (raw tags, lines, params);
     - Models.xml lists per section (unit, automat, crowd; model-level and mission-level);
@@ -588,3 +588,8 @@ Path aliases (as in `mission-builder.md`):
   sw-models-navigator (FRAGORDERS.md bullet, frag-order shortcut step 10, dia-type strings in the rename scan);
   one line in sw-sword-navigator and dai-navigator; sw-mission-builder routes frag orders to sw-fragorder-builder;
   sw.sword THEMES "Frag orders" row widened (the checkpoint gotcha was already added at step 4).
+- 2026-11-06 step 6: `missionlib.py` parses frag orders, every Models.xml section, automat → subordinate models and
+  `FragOrder.lua` (initializers incl. named / direct starts, propagation, automat branches, poll helpers), plus the
+  dia5 string index (readers, stoppers); `scan_fragorder_lua` moved there. `mission_check.py --fragorder` /
+  `--all-fragorders` (`--all` covers both). Triage in notes §6: all seeds reported; "Pause movement" keeps 2 true
+  positives (automat models whose subordinates cannot receive it).
