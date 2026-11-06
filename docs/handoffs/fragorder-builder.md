@@ -491,7 +491,7 @@ Path aliases (as in `mission-builder.md`):
       check).
 
 ### Phase C — agent and skills
-- [ ] **10. `.claude/agents/sw-fragorder-builder.md` + `.claude/skills/fragorder/SKILL.md`** (`/fragorder`,
+- [x] **10. `.claude/agents/sw-fragorder-builder.md` + `.claude/skills/fragorder/SKILL.md`** (`/fragorder`,
   `context: fork`). Tools: Read, Grep, Glob, Bash, Edit, Write; model inherit.
   - **Description** in the navigators' style:
     - unit, automat and crowd frag orders;
@@ -605,3 +605,8 @@ Path aliases (as in `mission-builder.md`):
   (+ transmitters / equipments), Models.xml model-level / per-mission lists for unit / automat / crowd models,
   sheets en + fr, `.ts`, Stages, `FragOrder.lua` per kind (kernel / task / read / immediate, `after`, `propagate`,
   `automat_branch`; CRLF kept, `luac -p` passes), frago task skeleton. Validation in notes §9.
+- 2026-11-06 step 10: `.claude/agents/sw-fragorder-builder.md` (description in the navigators' style; 11-step
+  procedure: context, clarify, critique, kind, reuse, design, checkpoint class + fix pair, entities, scaffold, lint
+  incl. `luac -p`, report; hard rule: insert-only `FragOrder.lua`), `.claude/skills/fragorder/SKILL.md` (fork),
+  `/mission-check` takes a frag-order name or dia-type; both registered in the checker. **Restart Claude Code** to
+  load the new agent.
