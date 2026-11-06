@@ -404,7 +404,7 @@ Path aliases (as in `mission-builder.md`):
 
   *Done when:* both designs are anchored, with `dai-navigator` confirmation of the `spark.resume` / `Behavior.start`
   semantics they rely on. The checker passes.
-- [ ] **5. Cross-links.**
+- [x] **5. Cross-links.**
   - CLAUDE.md pipeline row "Frag order: anatomy / build / check" pointing to `FRAGORDERS.md`, `CHECKPOINTS.md` §7 and
     (later) the tools.
   - sw-models-navigator: frag-order question shortcut, and the rename/impact checklist covers the hard-coded
@@ -584,3 +584,7 @@ Path aliases (as in `mission-builder.md`):
   - New Spark facts: `seqStageIndex` = last completed stage; no API for a running task's parameters; call `resume`
     once.
   - Map updates applied: 2 directai THEMES gotchas, 2 sw.sword THEMES gotchas.
+- 2026-11-06 step 5: cross-links: CLAUDE.md pipeline row "Frag order: anatomy / kinds / build / check";
+  sw-models-navigator (FRAGORDERS.md bullet, frag-order shortcut step 10, dia-type strings in the rename scan);
+  one line in sw-sword-navigator and dai-navigator; sw-mission-builder routes frag orders to sw-fragorder-builder;
+  sw.sword THEMES "Frag orders" row widened (the checkpoint gotcha was already added at step 4).
