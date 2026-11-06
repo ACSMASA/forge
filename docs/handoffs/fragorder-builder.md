@@ -463,7 +463,7 @@ Path aliases (as in `mission-builder.md`):
   - In `decisional_index.md` §7, fix the "Starts" column wording: rows without an initializer show the kernel path.
   - Update `docs/sw.models/README.md`.
   - Rebuild; `kits.py` shows it fresh.
-- [ ] **9. `mission_scaffold.py` frag-order mode** (`"fragorder": true` in the spec).
+- [x] **9. `mission_scaffold.py` frag-order mode** (`"fragorder": true` in the spec).
   - **Missions.xml:** append to `<fragorders>`, with no context block and the next id. Parameters gain
     `<transmitters>` / `<equipments>` passthrough.
   - **Models.xml**, per DB:
@@ -601,3 +601,7 @@ Path aliases (as in `mission-builder.md`):
   checkpoint class, check status) and frag-order anomalies in §5; `decisional_index.md` §7 "Starts" now shows
   `kernel: <task>` / `kernel: ✗` without an initializer (and no longer adds the dia-type to an initializer's starts);
   README updated; both rebuilt from master @ `d2f78fafcd`, fresh.
+- 2026-11-06 step 9: `mission_scaffold.py` frag-order mode (`"fragorder": true`, `--example fragorder`): Missions.xml
+  (+ transmitters / equipments), Models.xml model-level / per-mission lists for unit / automat / crowd models,
+  sheets en + fr, `.ts`, Stages, `FragOrder.lua` per kind (kernel / task / read / immediate, `after`, `propagate`,
+  `automat_branch`; CRLF kept, `luac -p` passes), frago task skeleton. Validation in notes §9.

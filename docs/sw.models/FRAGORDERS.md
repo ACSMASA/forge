@@ -172,7 +172,7 @@ Readers are named by dia-type string, so a rename or a new reader must find them
 - The commander skill's `typeOrder ==` tests, and `sendFragOrderFromType` callers.
 
 Grep a dia-type as `"<dia-type>"` in `dia5/` (Lua and XML) and as `>dia-type<` in XML. `mission_index.md` §6 lists
-the readers per frag order (from step 8 of `docs/handoffs/fragorder-builder.md`).
+the readers per frag order (an upper bound: senders and commander filters too).
 
 ## 8. Checks: what catches what
 
@@ -200,7 +200,7 @@ subordinates: a WARN when an automat model's subordinates all lack the order, a 
 ## 9. Build order (designer)
 
 1. **Reuse first**: an existing frag order with the same dia-type, purpose or task, in **both** DBs and under other
-   names (`decisional_index.md` §7 "Frag orders"; `mission_index.md` §6 once built).
+   names (`decisional_index.md` §7 "Frag orders"; `mission_index.md` §6: kind, task, readers, models).
 2. **Choose the kind** (§2). Kind (c) unless an initializer is needed.
 3. **Task and skills** (kinds (a), (c), (e)): the frago task in the family's `frago/` folder, with a priority over the
    mission's resources, `disable-when-done` or an opposite order, and checkpoint-safe skills (`CHECKPOINTS.md`). The
@@ -209,7 +209,9 @@ subordinates: a WARN when an automat model's subordinates all lack the order, a 
    branch.
 5. **Physical files per DB**: Missions.xml, Models.xml (model-level or per mission, in unit / automat / crowd models;
    for propagation, the subordinate models too), Stages.xml (both DBs) for new labels, then mildb `.ts` files and
-   sheets (`tools/mission_scaffold.py` frag-order mode, once step 9 is done).
+   sheets: `tools/mission_scaffold.py` frag-order mode (spec `"fragorder": true`, `--example fragorder`) writes all of
+   them and the `FragOrder.lua` entries of the kind (`kernel` none, `task`, `read`, `immediate`; `after`, `propagate`,
+   `automat_branch`), plus a frago task skeleton with a prioritized behavior.
 6. **`tools/mission_check.py --fragorder "<name>"`** and `tools/checkpoint_lint.py --fragorder "<name>"`; then
    `ant check` and `ant generate-database` in sw.models.
 7. **Test in the sim**: give the order (during a mission when it requires one), check the effect, save a checkpoint

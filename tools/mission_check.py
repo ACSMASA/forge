@@ -531,7 +531,7 @@ def check_fragorders_global(model, dbs, rep):
         return
     # propagation names
     low = {}
-    for d in all_dt | set(reg.init):
+    for d in sorted(all_dt) + sorted(set(reg.init) - all_dt):  # DB dia-types first, then client initializer keys
         low.setdefault(d.lower(), d)
         low.setdefault(d.rsplit(".", 1)[-1].lower(), d)
     for n, line in reg.propagated:

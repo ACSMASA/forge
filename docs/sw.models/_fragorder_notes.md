@@ -271,3 +271,21 @@ propagation to subordinates is a WARN only when **every** subordinate model of a
   are senders (Transport) or commander filters.
 - The Lua helpers (`strip_comments`, `mask_strings`, `block_end`) now come from missionlib; `checkpoint_lint --all`
   output is byte-identical to before for the old rules.
+
+## 9. Step 9: `mission_scaffold.py` frag-order mode
+
+Validated on a scratch copy of model ada (from master @ `d2f78fafcd`):
+- `--check-html`: 1047/1047 byte-exact (780 mission + 99 + 99 + 69 frag-order sheets); 1058/1058 after the 4 test
+  orders were written (fr images under the English name).
+- Specs written: `task` (reuses WaitThere, `after` PauseMovement), `read` (+ propagate), `kernel` (new frago task
+  TestHold with a priority 1e5 `actions.Wait`), `immediate` (+ automat branch, mildb, an `automat:` model prefix).
+  `mission_check --fragorder` clean for task / kernel / immediate; read is clean once a reader exists (one added to
+  MoveAlong, persisting its value: `checkpoint_lint` does not flag it). TEST - Hold keeps the expected note "a task
+  named by the dia-type runs on a commander" (available-without-mission, not propagated).
+- `--all` on the copy = the real tree's findings (line numbers normalized) + those 2 notes.
+- `FragOrder.lua` stays pure CRLF (1450 lines) and passes `directai/bin/luac.exe -p` (Lua 5.2.4).
+- Refusals checked: existing name / dia-type, unknown model, a model name shared by two kinds (needs `unit:`),
+  missing fr name, unknown `after` key, kind kernel with a dia-name that is no task parameter.
+- Getter table measured from the initializers (`getter_catalog`): e.g. Point → `getPointParameter` wrapped in
+  `CreateKnowledge( …point, … )`, Integer / Enumeration → `getIntegerParameter`; a type no initializer reads needs
+  `getter` / `wrap` in the spec.

@@ -3,7 +3,7 @@
 Usage (from the forge root):
     python -I tools/mission_scaffold.py SPEC.json|- [--root C:/MASARepo/sw.models] [--model ada]
                                        [--sword C:/MASARepo/sw.sword] [--write [--allow-master]]
-    python -I tools/mission_scaffold.py --example        # print a commented example spec
+    python -I tools/mission_scaffold.py --example [fragorder]   # print a commented example spec
 
 Default: print a unified diff of every insertion; nothing is written. --write applies it (refused on master/main
 unless --allow-master; a --root outside git is always allowed). Then run tools/mission_check.py --mission NAME.
@@ -20,6 +20,27 @@ What it writes (rules and anchors: docs/sw.models/MISSIONS.md §1):
                  mission_index.md §1); its behaviors are left as TODO comments for the designer
 Refuses (exit 1): name / dia-type / id already used, unknown model, category or frag order, unknown type or type
 with no Spark converter, missing translations, context dia-names reused. Unknown spec keys are reported as notes.
+
+Frag-order mode (spec key "fragorder": true; rules and anchors: docs/sw.models/FRAGORDERS.md; --example fragorder):
+  per target DB  Missions.xml   <fragorders> entry appended: alphabetical attributes, no context block, the spec
+                                parameters (+ transmitters / equipments children), id = max over every DB + 1
+                 Models.xml     models_level {db: [model]} -> model-level <fragorders>; missions {db: {model:
+                                [mission]}} -> <fragorder> under that mission (unit, automat, crowd models; a name
+                                shared by two kinds takes a "unit:" / "automat:" / "crowd:" prefix)
+                 sheets         Mission sheets/fragmentary orders/<name>.xml + .html (+ fr, images under the en name)
+                 per language   Missions_<lang>.ts: frag-order, "frag-order - <name>" (parameter and value names,
+                                deduplicated), mission-categories
+  every DB       Stages.xml + Stages_<lang>.ts for a new task's stage labels
+  dia5           FragOrder.lua (CRLF kept; entries inserted, never reordered), by "kind":
+                   kernel     no entry: the dia-type is the task name, dia-names = the task's parameter names
+                   task       an initializer reading each dia-name into mission.<task_param> (getter and ontology
+                              wrapper measured on the existing initializers), returning true, "<task>"
+                   read       an empty initializer (a reader must consume the order: TODO)
+                   immediate  an initializer stub reading the parameters, a TODO effect, then cleanFragOrder
+                 "after": the initializer key to insert after (default: the end of fragOrderTaskInitializers);
+                 "propagate": true -> fragOrdersToBePropagated; "automat_branch": true -> a TODO branch in
+                 executeAutomatFragOrder; a new task (kinds kernel / task) -> a frago task skeleton, one stage,
+                 disable-when-done unless "ends": false, its behavior ("behavior", "priority", default 100000.0)
 
 Spec keys (--example shows them; keys starting with _ are ignored):
   name, task                      required
@@ -91,7 +112,8 @@ EXAMPLE = {
 TOP_KEYS = {"name", "task", "dia-type", "dbs", "category", "new_category", "id", "models", "fragorders",
             "description", "stages", "task_skeleton", "ends", "params"}
 PARAM_KEYS = {"name", "dia-name", "type", "optional", "list", "max-occurs", "min-occurs", "min-value", "max-value",
-              "choices", "objects", "units", "values", "attrs", "default", "task_type", "description", "sheet"}
+              "choices", "objects", "units", "values", "attrs", "default", "task_type", "description", "sheet",
+              "transmitters", "equipments", "task_param", "getter", "wrap"}
 
 SECTIONS = ["context", "behavior", "specific-cases", "comments", "mission-end"]
 # The context parameters' sheet texts, as written in 237 of the mildb sheets (en) and 236 of the fr ones.
@@ -252,7 +274,9 @@ def validate_html(model):
     """Re-render every sheet of the model and compare with the .html on disk: (identical, total, first mismatches)."""
     same, tot, bad = 0, 0, []
     for db in model.dbs.values():
-        dirs = [(db.sheets_dir, 0)] + [(os.path.join(db.sheets_dir, "Locales", lang), 2) for lang in db.ts]
+        dirs = []
+        for top in (db.sheets_dir, db.fo_sheets_dir):
+            dirs += [(top, 0)] + [(os.path.join(top, "Locales", lang), 2) for lang in db.ts]
         for d, depth in dirs:
             if not os.path.isdir(d):
                 continue
@@ -376,10 +400,11 @@ def param_xml(p, canonical, db):
         kids.append("        <objects>")
         kids += [f'          <parameter type="{xa(o)}"/>' for o in obj]
         kids.append("        </objects>")
-    if p.get("units"):
-        kids.append("        <units>")
-        kids += [f'          <parameter type="{xa(u)}"/>' for u in p["units"]]
-        kids.append("        </units>")
+    for tag in ("units", "transmitters", "equipments"):
+        if p.get(tag):
+            kids.append(f"        <{tag}>")
+            kids += [f'          <parameter type="{xa(u)}"/>' for u in p[tag]]
+            kids.append(f"        </{tag}>")
     for v in p.get("values") or []:
         kids.append(f'        <value id="{xa(v["id"])}" name="{xa(v["name"])}"/>')
     if not kids:
@@ -417,12 +442,13 @@ def sheet_xml(name, version_line, params, sections):
         else:
             L.append(f"  <{tag}/>")
     section("context", sections.get("context"))
-    L.append("  <parameters>")
+    L.append("  <parameters>" if params else "  <parameters/>")
     for pname, opt, text in params:
         head = f'    <parameter name="{xa(pname)}" optional="{"true" if opt else "false"}"'
         body = sheet_lines([text] if text else [], 6)
         L.extend([head + ">"] + body + ["    </parameter>"] if body else [head + "/>"])
-    L.append("  </parameters>")
+    if params:
+        L.append("  </parameters>")
     for tag in SECTIONS[1:]:
         section(tag, sections.get(tag))
     L.append("  <attachments/>")
@@ -499,12 +525,13 @@ def pretty_xml(fragment, indent):
     return out
 
 
-def task_skeleton(spec, params, labels):
+def task_skeleton(spec, params, labels, frago=False):
     L = ['<?xml version="1.0" encoding="UTF-8"?>',
          f'<task xmlns="http://www.masagroup.net/directai/spark/lang/1.5" name="{xa(spec["task"])}"'
          + (' disable-when-done="true">' if spec.get("ends", True) else ">"),
-         f'    <description>{xt(spec.get("description", "TODO"))}</description>',
-         "    <parameters>"]
+         f'    <description>{xt(spec.get("description", "TODO"))}</description>']
+    if params:
+        L.append("    <parameters>")
     for p, inner, nullable, dflt in params:
         L.append(f'        <parameter name="{xa(p["dia-name"])}"{" nullable=" + chr(34) + "true" + chr(34) if nullable else ""}>')
         L.append(f'            <description>{xt(p.get("description") or p.get("sheet") or p["name"])}</description>')
@@ -514,15 +541,24 @@ def task_skeleton(spec, params, labels):
         if dflt:
             L += ["            <default>"] + pretty_xml(dflt, 16) + ["            </default>"]
         L.append("        </parameter>")
-    L.append("    </parameters>")
+    if params:
+        L.append("    </parameters>")
     L.append("    <stages>")
     for i, lab in enumerate(labels):
         last_open = i == len(labels) - 1 and not spec.get("ends", True)
         todo = ("runs until the mission is stopped: no next-stage-when-done" if last_open else
                 "one with next-stage-when-done")
-        L += [f'        <stage label="{xa(lab)}">', "            <behaviors>",
-              f"                <!-- TODO: behaviors of stage \"{xt(lab)}\" ({todo}) -->",
-              "            </behaviors>", "        </stage>"]
+        L += [f'        <stage label="{xa(lab)}">', "            <behaviors>"]
+        if frago and spec.get("behavior") and i == len(labels) - 1:
+            L += [f'                <behavior name="{xa(spec["behavior"])}" priority="{xa(spec.get("priority", "100000.0"))}">',
+                  "                    <!-- TODO: bind the skill parameters: <parameter name=\"…\"><variable>…</variable></parameter> -->",
+                  "                </behavior>"]
+        elif frago:
+            L.append(f"                <!-- TODO: behaviors of stage \"{xt(lab)}\" ({todo}), each with a priority "
+                     f"(e.g. 100000.0) over the mission's skills on shared resources: FRAGORDERS.md §5 -->")
+        else:
+            L.append(f"                <!-- TODO: behaviors of stage \"{xt(lab)}\" ({todo}) -->")
+        L += ["            </behaviors>", "        </stage>"]
     L.append("    </stages>")
     L.append("</task>")
     return "\n".join(L) + "\n"
@@ -805,6 +841,448 @@ def scaffold(model, spec, sword_types):
         ed.notes.append(f"task {task} does not exist and task_skeleton is false: write it before mission_check")
     return ed
 
+# ---------------------------------------------------------------------------------------------------------------------
+# frag orders (rules and anchors: docs/sw.models/FRAGORDERS.md)
+
+EXAMPLE_FO = {
+    "_comment": "A valid frag-order spec for model ada (kinds: kernel | task | read | immediate; FRAGORDERS.md §2).",
+    "fragorder": True,
+    "kind": "task",
+    "name": "Wait at a point",
+    "dia-type": "WaitAtPoint",
+    "task": "common.agent.tasks.frago.WaitThere",
+    "_task": "kernel / task kinds; a new task gets a skeleton (stages, behavior, priority, ends)",
+    "dbs": ["mildb", "worldwide-tests"],
+    "category": "Coordination",
+    "without_mission": False,
+    "models_level": {"mildb": [], "worldwide-tests": []},
+    "missions": {"mildb": {"Infantry platoon": ["COMMON - Move"]},
+                 "worldwide-tests": {"Infantry platoon": ["COMMON - Move"]}},
+    "_after": "PauseMovement (insert the initializer after this key; default: end of the table)",
+    "_propagate": False,
+    "_automat_branch": False,
+    "fr": {"name": "Attendre en un point"},
+    "params": [
+        {"name": "Delay", "dia-name": "delay", "type": "Integer", "optional": True, "task_param": "delay",
+         "fr": "Délai", "sheet": "Waiting time in seconds.", "sheet_fr": "Durée d'attente en secondes."},
+    ],
+    "sheet": {"context": ["Stops the agent's movement for a given time."], "behavior": [], "specific-cases": [],
+              "comments": [], "mission-end": ["The order ends when the delay is over."]},
+    "sheet_fr": {"context": ["Arrête le mouvement de l'agent pendant une durée donnée."], "behavior": [],
+                 "specific-cases": [], "comments": [], "mission-end": []},
+}
+FO_TOP_KEYS = {"fragorder", "kind", "name", "dia-type", "task", "dbs", "category", "new_category", "id",
+               "without_mission", "models_level", "missions", "after", "propagate", "automat_branch", "description",
+               "stages", "task_skeleton", "ends", "behavior", "priority", "params"}
+FO_KINDS = ("kernel", "task", "read", "immediate")
+MODEL_KINDS = ("unit", "automat", "crowd", "task-group")
+
+
+def getter_catalog(model):
+    """(canonical type, is_list) -> Counter of (getter stem, ontology key or None) over the FragOrder.lua
+    initializers that read a parameter of that type (e.g. Point -> ("Point", "point"))."""
+    reg = model.fragorder_lua()
+    cat = defaultdict(Counter)
+    for db in model.dbs.values():
+        for fo in db.fragorders:
+            init = reg.init.get(fo.dia_type)
+            if init is None:
+                continue
+            pt = {q.dia_name: (model.types.canonical(q.type) or q.type, q.is_list) for q in fo.params}
+            for line in init.code.splitlines():
+                g = re.search(r'integration\.get(\w+?)Parameter\s*\(\s*fragOrder\s*,\s*"([^"]+)"', line)
+                if g and g.group(2) in pt:
+                    w = re.search(r"CreateKnowledge\(\s*integration\.ontology\.types\.(\w+)", line)
+                    cat[pt[g.group(2)]][(g.group(1), w.group(1) if w else None)] += 1
+    return cat
+
+
+def resolve_model(db, ref):
+    """'Name' or 'kind:Name' -> (kind, name) of a Models.xml model, or an error string."""
+    if ":" in ref and ref.split(":", 1)[0] in MODEL_KINDS:
+        k, n = ref.split(":", 1)
+        return (k, n) if (k, n) in db.model_entries else f"{db.name}: no {k} model \"{n}\""
+    hits = [k for k in db.model_entries if k[1] == ref]
+    if not hits:
+        return f"{db.name}: unknown model \"{ref}\""
+    if len(hits) > 1:
+        return f"{db.name}: model name \"{ref}\" is used by {[k for k, _ in hits]} models: write \"{hits[0][0]}:{ref}\""
+    return hits[0]
+
+
+def models_add(text, kind, model_name, fo_name, mission=None):
+    """Append <fragorder name/> to a model's model-level list, or under one of its missions (Models.xml)."""
+    u = re.search(rf'(?m)^    <{kind} [^>]*\bname="{re.escape(xa(model_name))}"[^>]*>\n', text)
+    if u is None:
+        raise SpecError(f"{kind} model {model_name} not found in Models.xml")
+    uend = text.find(f"    </{kind}>", u.end())
+    if mission is None:
+        line = f'        <fragorder name="{xa(fo_name)}"/>\n'
+        empty = re.compile(r"(?m)^      <fragorders/>\n").search(text, u.end(), uend)
+        if empty:
+            return text[:empty.start()] + "      <fragorders>\n" + line + "      </fragorders>\n" + text[empty.end():]
+        op = re.compile(r"(?m)^      <fragorders>\n").search(text, u.end(), uend)
+        if op:
+            close = text.find("      </fragorders>", op.end())
+            if line in text[op.end():close]:
+                return text
+            return text[:close] + line + text[close:]
+        ms = re.compile(r"(?m)^      (?:</missions>|<missions/>)\n").search(text, u.end(), uend)
+        if ms is None:
+            raise SpecError(f"{kind} model {model_name}: neither <fragorders> nor <missions> found")
+        return text[:ms.end()] + "      <fragorders>\n" + line + "      </fragorders>\n" + text[ms.end():]
+    line = f'          <fragorder name="{xa(fo_name)}"/>\n'
+    sc = re.compile(rf'(?m)^        <mission name="{re.escape(xa(mission))}"/>\n').search(text, u.end(), uend)
+    if sc:
+        return (text[:sc.start()] + f'        <mission name="{xa(mission)}">\n' + line + "        </mission>\n"
+                + text[sc.end():])
+    op = re.compile(rf'(?m)^        <mission name="{re.escape(xa(mission))}">\n').search(text, u.end(), uend)
+    if op is None:
+        raise SpecError(f"{kind} model {model_name} has no mission {mission}")
+    close = text.find("        </mission>", op.end())
+    if line in text[op.end():close]:
+        return text
+    return text[:close] + line + text[close:]
+
+
+def initializer_lines(kind, dt, task, params, canon, catalog):
+    """FragOrder.lua initializer for kinds task / read / immediate (LF; the caller restores CRLF)."""
+    L = [f'    [ "{dt}" ] = function( mission, fragOrder )']
+    reads = []
+    for prm in params:
+        c, is_list = canon[prm["dia-name"]], bool(prm.get("list") or prm.get("max-occurs"))
+        if prm.get("getter"):
+            g, w = prm["getter"], prm.get("wrap")
+        else:
+            g, w = catalog[(c, is_list)].most_common(1)[0][0]
+        reads.append((prm, f'integration.get{g}Parameter( fragOrder, "{prm["dia-name"]}" )', w))
+    if kind == "task":
+        for prm, call, w in reads:
+            field = prm.get("task_param", prm["dia-name"])
+            if w and prm.get("optional"):
+                L += [f"        local {prm['dia-name']} = {call}", f"        if {prm['dia-name']} ~= nil then",
+                      f"            mission.{field} = CreateKnowledge( integration.ontology.types.{w}, {prm['dia-name']} )",
+                      "        end"]
+            elif w:
+                L.append(f"        mission.{field} = CreateKnowledge( integration.ontology.types.{w}, {call} )")
+            else:
+                L.append(f"        mission.{field} = {call}")
+        L.append(f'        return true, "{task}"')
+    elif kind == "read":
+        L.append(f'        -- read by skills of the running mission (TODO: the reader consumes the order with '
+                 f'integration.query.getFirstFragOrderFromType( "{dt}" ) and persists what it derives; FRAGORDERS.md §2, '
+                 'CHECKPOINTS.md §4)')
+    else:  # immediate
+        for prm, call, w in reads:
+            L.append(f"        local {prm['dia-name']} = {call}")
+        L += ["        -- TODO: the immediate effect; keep it in the ODB / world, not in myself.* (lost on resume: "
+              "CHECKPOINTS.md §7.4)", "        integration.cleanFragOrder( fragOrder )"]
+    L.append("    end,")
+    return L
+
+
+def edit_fragorder_lua(raw, reg, dt, init_lines, after, propagate, automat_branch):
+    """Insert entries into FragOrder.lua text (bottom to top, so the parser's line numbers stay valid)."""
+    crlf = "\r\n" in raw
+    lines = raw.replace("\r\n", "\n").split("\n")
+    code = reg.code
+    if init_lines:
+        if after:
+            at = reg.init[after].end_line  # insert after the entry's `end,` line
+            lines[at:at] = [""] + init_lines
+        else:
+            close = ml.line_of(code, reg.init_span[1] - 1)  # the line holding the table's `}`
+            lines[close - 1:close - 1] = [""] + init_lines
+    if automat_branch:
+        a0, a1 = (ml.line_of(code, x) for x in reg.automat_span)
+        idx = next((i for i in range(a0 - 1, a1) if "integration.mustBePropagate" in lines[i]), None)
+        j = idx - 1 if idx is not None else None
+        while j is not None and j > a0 and not lines[j].strip():
+            j -= 1
+        if j is None or lines[j] != "    end":
+            raise SpecError("FragOrder.lua: executeAutomatFragOrder does not end its orderType chain with `    end` "
+                            "before the mustBePropagate fallback: add the branch by hand")
+        lines[j:j] = [f'    elseif orderType == "{dt}" then',
+                      "        -- TODO: what the commander does: act, or forward to the subordinates with "
+                      "integration.SendMessage( \"StartTask\", … ) / meKnowledge:sendDynamicMessage( \"FragOrder\", … )",
+                      "        integration.cleanFragOrder( fragOrder )", "        return true"]
+    if propagate:
+        name, ln = reg.propagated[-1]
+        m = re.match(r'^(\s*"[^"]*")(\s*,)?(.*)$', lines[ln - 1])
+        if m is None:
+            raise SpecError("FragOrder.lua: unexpected last line of fragOrdersToBePropagated")
+        if not m.group(2):
+            lines[ln - 1] = m.group(1) + "," + m.group(3)
+        lines[ln:ln] = [f'    "{dt}"']
+    out = "\n".join(lines)
+    return out.replace("\n", "\r\n") if crlf else out
+
+
+def scaffold_fragorder(model, spec, sword_types):
+    ed = Edits(model)
+    errors = []
+
+    def need(cond, msg):
+        if not cond:
+            errors.append(msg)
+        return cond
+
+    reg = model.fragorder_lua()
+    kind = spec.get("kind", "kernel")
+    name, task = spec.get("name"), spec.get("task")
+    need(kind in FO_KINDS, f"kind {kind} not in {FO_KINDS}")
+    need(name, "spec needs name")
+    if kind == "kernel":
+        dt = spec.get("dia-type", task)
+        need(task, "kind kernel needs task (the task the kernel starts)")
+        need(dt == task, "kind kernel: the dia-type must be the task name (the kernel starts the task named by it)")
+    else:
+        dt = spec.get("dia-type")
+        need(dt, f"kind {kind} needs a dia-type")
+        if kind == "task":
+            need(task, "kind task needs task")
+        elif task:
+            need(False, f"kind {kind} starts no task: drop \"task\"")
+    if errors:
+        raise SpecError("\n".join(errors))
+    dbs = spec.get("dbs") or list(model.dbs)
+    for d in dbs:
+        need(d in model.dbs, f"unknown DB {d}; have {list(model.dbs)}")
+    dbs = [model.dbs[d] for d in dbs if d in model.dbs]
+    fid = str(spec.get("id") or model.max_id() + 1)
+    for db in model.dbs.values():
+        need(fid not in db.ids, f"id {fid} already used in {db.name}: {db.ids.get(fid)}")
+    for db in dbs:
+        need(name not in db.fragorders_by_name, f"{db.name}: a frag order is already named \"{name}\"")
+        same = [f.name for f in db.fragorders_by_dia_type.get(dt, [])]
+        need(not same, f"{db.name}: dia-type {dt} already used by frag order(s) {same} (the sim keeps the last one)")
+        need(db.fragorders_span is not None, f"{db.name}: Missions.xml has no <fragorders> section")
+    need(reg.ok, f"{model.rel(reg.path)} not found")
+    need(dt not in reg.init, f"FragOrder.lua already has an initializer for {dt}"
+         + (": the kernel path would never run" if kind == "kernel" else ""))
+    if spec.get("propagate"):
+        need(dt not in reg.propagated_names(), f"{dt} is already in fragOrdersToBePropagated")
+    if spec.get("automat_branch"):
+        need(dt not in reg.automat, f"executeAutomatFragOrder already tests {dt}")
+    after = spec.get("after")
+    if after:
+        need(kind != "kernel", "\"after\" places an initializer: kind kernel writes none")
+        need(after in reg.init, f"\"after\": no initializer {after} in FragOrder.lua")
+    # params
+    params = spec.get("params") or []
+    seen, canon = set(), {}
+    ctx = {c["dia-name"] for c in ml.CONTEXT} | {c["name"] for c in ml.CONTEXT}
+    for prm in params:
+        if not need(prm.get("name") and prm.get("dia-name") and prm.get("type"), f"parameter {prm} needs name, dia-name and type"):
+            continue
+        need(prm["dia-name"] not in ctx, f"parameter {prm['name']}: frag orders have no context block")
+        need(prm["dia-name"] not in seen, f"dia-name {prm['dia-name']} twice")
+        seen.add(prm["dia-name"])
+        is_list = bool(prm.get("list") or prm.get("max-occurs"))
+        c = sword_types.canonical(prm["type"]) if sword_types.ok else prm["type"]
+        if sword_types.ok and need(c, f"parameter {prm['name']}: unknown type {prm['type']}"):
+            need(sword_types.converter(c, is_list), f"parameter {prm['name']}: {c}{'List' if is_list else ''} has no BM converter (value never passed)")
+        canon[prm["dia-name"]] = c or prm["type"]
+        if canon[prm["dia-name"]] == "Enumeration":
+            need(prm.get("values"), f"parameter {prm['name']}: Enumeration needs values")
+    catalog = getter_catalog(model)
+    if kind in ("task", "immediate"):
+        for prm in params:
+            if prm.get("dia-name") in canon and not prm.get("getter"):
+                key = (canon[prm["dia-name"]], bool(prm.get("list") or prm.get("max-occurs")))
+                need(catalog.get(key), f"parameter {prm['name']}: no initializer reads a {key[0]}{' list' if key[1] else ''} "
+                                       "today; give \"getter\" (integration.get<getter>Parameter) and \"wrap\" (ontology key or null)")
+    # translations
+    langs = sorted({lang for db in dbs for lang, kinds in db.ts.items() if "Missions" in kinds})
+    for lang in langs:
+        need((spec.get(lang) or {}).get("name"), f"spec.{lang}.name (translated frag-order name) missing")
+        for prm in params:
+            need(prm.get(lang), f"parameter {prm.get('name')}: \"{lang}\" translation missing")
+            for v in prm.get("values") or []:
+                need(v.get(lang), f"parameter {prm.get('name')} value {v.get('name')}: \"{lang}\" translation missing")
+    # task and stages
+    existing_task = model.task(task) if task else None
+    stages = []
+    if task:
+        if existing_task is not None and existing_task.kind != "task":
+            need(False, f"{task} is a {existing_task.kind}, not a task")
+        if spec.get("stages"):
+            stages = [(s["label"], s) for s in spec["stages"]]
+            if existing_task is not None:
+                need([lab for lab, _ in stages] == existing_task.labels(),
+                     f"spec stages differ from the existing task's {existing_task.labels()}")
+        elif existing_task is not None:
+            stages = [(lab, {}) for lab in existing_task.labels()]
+        else:
+            need(False, f"task {task} does not exist and the spec gives no stages")
+        for lab, s in stages:
+            for db in model.dbs.values():
+                for lang, kinds in db.ts.items():
+                    if "Stages" in kinds and lab not in kinds["Stages"].get("stage", {}):
+                        need(s.get(lang), f"stage \"{lab}\": \"{lang}\" translation missing (Stages_{lang}.ts)")
+        if kind == "kernel" and existing_task is not None:
+            for prm in params:
+                if prm.get("dia-name"):
+                    need(prm["dia-name"] in existing_task.params,
+                         f"kind kernel: dia-name {prm['dia-name']} is not a parameter of {task} (the kernel binds by dia-name)")
+        if kind == "task" and existing_task is not None:
+            for prm in params:
+                f_ = prm.get("task_param", prm.get("dia-name"))
+                need(f_ in existing_task.params, f"parameter {prm.get('name')}: mission.{f_} is not a parameter of {task} (set task_param)")
+    # category
+    cat = spec.get("category")
+    for db in dbs:
+        if db.categories and cat is not None:
+            need(cat in db.categories or spec.get("new_category"),
+                 f"{db.name}: category \"{cat}\" not in {db.categories} (or set new_category + fr_category)")
+    # models
+    wm = bool(spec.get("without_mission"))
+    lvl_spec, msn_spec = spec.get("models_level") or {}, spec.get("missions") or {}
+    lvl, msn = defaultdict(list), defaultdict(list)
+    for db in dbs:
+        for ref in lvl_spec.get(db.name) or []:
+            r = resolve_model(db, ref)
+            if need(not isinstance(r, str), r):
+                lvl[db.name].append(r)
+        for ref, missions in (msn_spec.get(db.name) or {}).items():
+            r = resolve_model(db, ref)
+            if not need(not isinstance(r, str), r):
+                continue
+            for mi in missions:
+                if need(mi in db.model_entries[r]["missions"], f"{db.name}: {r[0]} model \"{r[1]}\" has no mission \"{mi}\""):
+                    msn[db.name].append((r, mi))
+        if not wm:
+            need(lvl[db.name] or msn[db.name], f"{db.name}: never available: without_mission is false and neither "
+                                               "models_level nor missions lists a model")
+    # unknown keys
+    lang_keys = {k for lang in langs for k in (lang, f"{lang}_category", f"sheet_{lang}")}
+    for k in set(spec) - FO_TOP_KEYS - lang_keys - {"sheet", "fr_category", "sheet_fr", "fr"}:
+        ed.notes.append(f"unknown spec key \"{k}\" ignored")
+    for prm in params:
+        for k in set(prm) - PARAM_KEYS - set(langs) - {f"sheet_{lang}" for lang in langs} - {"fr", "sheet_fr"}:
+            if not k.startswith("_"):
+                ed.notes.append(f"parameter {prm.get('name')}: unknown key \"{k}\" ignored")
+    if errors:
+        raise SpecError("\n".join(errors))
+
+    # ---- Missions.xml
+    for db in dbs:
+        text = ed.get(db.missions_path)
+        attrs = {"available-without-mission": "true" if wm else "false", "dia-type": dt, "id": fid, "name": name}
+        if db.categories and cat is not None:
+            attrs["category"] = cat
+        head = "    <fragorder " + " ".join(f'{k}="{xa(v)}"' for k, v in sorted(attrs.items()))
+        block = (head + ">\n" + "".join(param_xml(q, canon[q["dia-name"]], db.name) for q in params)
+                 + "    </fragorder>\n") if params else head + "/>\n"
+        end = re.search(r"(?m)^  </fragorders>", text).start()
+        text = text[:end] + block + text[end:]
+        if db.categories and cat is not None and cat not in db.categories:
+            cend = re.search(r"(?m)^  </categories>", text).start()
+            text = text[:cend] + f'    <category name="{xa(cat)}"/>\n' + text[cend:]
+        ed.set(db.missions_path, text)
+    # ---- Models.xml
+    for db in dbs:
+        text = ed.get(db.models_path)
+        for k, mo in lvl[db.name]:
+            text = models_add(text, k, mo, name)
+        for (k, mo), mi in msn[db.name]:
+            text = models_add(text, k, mo, name, mi)
+        ed.set(db.models_path, text)
+    # ---- Stages.xml (every DB) and Stages_<lang>.ts
+    for db in model.dbs.values():
+        if os.path.isfile(db.stages_path):
+            text = ed.get(db.stages_path)
+            for lab, _ in stages:
+                if lab in db.stages:
+                    continue
+                items = [(ET.fromstring(f'<s k="{x.group(1)}"/>').get("k"), x.start())
+                         for x in re.finditer(r'(?m)^  <stage key="([^"]*)"', text)]
+                text = insert_sorted(text, items, lab, f'  <stage key="{xa(lab)}" value="{xa(lab)}"/>\n',
+                                     text.rfind("</stages>"))
+            ed.set(db.stages_path, text)
+        for lang, kinds in db.ts.items():
+            if "Stages" not in kinds:
+                continue
+            pth = os.path.join(db.locales, lang, f"Stages_{lang}.ts")
+            text = ed.get(pth)
+            for lab, s in stages:
+                if lab not in kinds["Stages"].get("stage", {}):
+                    text = ts_add_message(text, "stage", lab, s[lang])
+            ed.set(pth, text)
+    # ---- Missions_<lang>.ts
+    for db in dbs:
+        for lang in langs:
+            if "Missions" not in db.ts.get(lang, {}):
+                continue
+            pth = os.path.join(db.locales, lang, f"Missions_{lang}.ts")
+            text = ed.get(pth)
+            text = ts_add_message(text, "frag-order", name, spec[lang]["name"])
+            msgs = {}
+            for prm in params:
+                msgs[prm["name"]] = prm[lang]
+                for v in prm.get("values") or []:
+                    msgs[v["name"]] = v[lang]
+            if msgs:
+                text = ts_add_context(text, f"frag-order - {name}", msgs)
+            if db.categories and cat is not None and cat not in db.categories:
+                if not spec.get(f"{lang}_category"):
+                    raise SpecError(f"new category \"{cat}\": {lang}_category missing")
+                text = ts_add_message(text, "mission-categories", cat, spec[f"{lang}_category"])
+            ed.set(pth, text)
+    # ---- sheets
+    for db in dbs:
+        hd = re.search(r'<missions model-version="([^"]*)"[^>]*xsi:noNamespaceSchemaLocation="([^"]*)/Missions\.xsd"',
+                       ed.get(db.missions_path))
+        version = (hd.group(1), hd.group(2) + "/missionSheet.xsd") if hd else ("4.8.2", "schemas/physical/missionSheet.xsd")
+        sp = [(q["name"], bool(q.get("optional")), q.get("sheet")) for q in params]
+        x = sheet_xml(name, version, sp, spec.get("sheet") or {})
+        ed.new(os.path.join(db.fo_sheets_dir, f"{name}.xml"), x)
+        ed.new(os.path.join(db.fo_sheets_dir, f"{name}.html"), render_sheet_html(x, 0))
+        for lang in langs:
+            if "Missions" not in db.ts.get(lang, {}):
+                continue
+            sp = [(q[lang], bool(q.get("optional")), q.get(f"sheet_{lang}")) for q in params]
+            stem = spec[lang]["name"]
+            d = os.path.join(db.fo_sheets_dir, "Locales", lang)
+            x = sheet_xml(stem, version, sp, spec.get(f"sheet_{lang}") or {})
+            ed.new(os.path.join(d, f"{stem}.xml"), x)
+            # images stay under the English name (measured on every fr frag-order sheet)
+            ed.new(os.path.join(d, f"{stem}.html"), render_sheet_html(x, 2, f"./../../Images/{name}/"))
+    # ---- FragOrder.lua
+    init_lines = initializer_lines(kind, dt, task, params, canon, catalog) if kind != "kernel" else []
+    if init_lines or spec.get("propagate") or spec.get("automat_branch"):
+        ed.set(reg.path, edit_fragorder_lua(ed.get(reg.path), reg, dt, init_lines, after, spec.get("propagate"),
+                                            spec.get("automat_branch")))
+    if kind == "read":
+        ed.notes.append(f"kind read: write the reader in the running mission's skill: integration.query."
+                        f"getFirstFragOrderFromType( \"{dt}\" ), and persist what it derives (CHECKPOINTS.md §4)")
+    if kind == "immediate":
+        ed.notes.append(f"kind immediate: write the effect in the {dt} initializer (TODO), before cleanFragOrder")
+    if spec.get("automat_branch"):
+        ed.notes.append(f"automat branch for {dt}: write the commander's action (TODO in executeAutomatFragOrder)")
+    # ---- task skeleton
+    if task and existing_task is None and spec.get("task_skeleton", True):
+        tp = model.entity_path(task)
+        if "/frago/" not in model.rel(tp):
+            ed.notes.append(f"new task {task} is not under a frago/ folder (FRAGORDERS.md §1)")
+        cat_t = type_catalog(model)
+        tparams = []
+        for prm in params:
+            c = canon[prm["dia-name"]]
+            is_list = bool(prm.get("list") or prm.get("max-occurs"))
+            inner = task_type_xml(model, c, is_list, prm.get("task_type"), cat_t) or "<any/>"
+            absent = sword_types.absent_value(c, is_list) if sword_types.ok else None
+            dflt = default_xml(prm, inner)
+            nullable = bool(prm.get("optional")) and (absent == "NIL" or dflt is None)
+            q = dict(prm)
+            q["dia-name"] = prm.get("task_param", prm["dia-name"]) if kind == "task" else prm["dia-name"]
+            tparams.append((q, inner, nullable, dflt))
+        ed.new(tp, task_skeleton(dict(spec, task=task), tparams, [lab for lab, _ in stages], frago=True))
+        ed.notes.append(f"task skeleton {model.rel(tp)}: check its behavior and bind its parameters (TODO)")
+    elif task and existing_task is None:
+        ed.notes.append(f"task {task} does not exist and task_skeleton is false: write it before mission_check")
+    return ed
+
 
 def git_branch(path):
     try:
@@ -824,12 +1302,13 @@ def main():
     ap.add_argument("--sword", default=ml.DEFAULT_SWORD)
     ap.add_argument("--write", action="store_true", help="apply the insertions (default: print the diff)")
     ap.add_argument("--allow-master", action="store_true", help="allow --write on a master/main checkout")
-    ap.add_argument("--example", action="store_true", help="print an example spec and exit")
+    ap.add_argument("--example", nargs="?", const="mission", choices=["mission", "fragorder"],
+                    help="print an example spec (unit mission, or frag order) and exit")
     ap.add_argument("--check-html", action="store_true",
                     help="re-render every existing sheet .html of the model and compare (renderer self-test)")
     a = ap.parse_args()
     if a.example:
-        print(json.dumps(EXAMPLE, indent=2, ensure_ascii=False))
+        print(json.dumps(EXAMPLE_FO if a.example == "fragorder" else EXAMPLE, indent=2, ensure_ascii=False))
         return
     model = ml.load_model(a.root, a.model, a.sword)
     if a.check_html:
@@ -851,7 +1330,7 @@ def main():
     if not model.types.ok:
         print(f"WARN sw.sword type tables not found under {a.sword}: types not checked, skeleton types guessed")
     try:
-        ed = scaffold(model, spec, model.types)
+        ed = (scaffold_fragorder if spec.get("fragorder") else scaffold)(model, spec, model.types)
     except SpecError as e:
         print("ERROR spec rejected:\n  " + str(e).replace("\n", "\n  "))
         sys.exit(1)
@@ -869,7 +1348,11 @@ def main():
         print(f"{len(ed.changed())} file(s) would change; rerun with --write to apply")
     for n in ed.notes:
         print("NOTE " + n)
-    print(f'next: python -I tools/mission_check.py --mission "{spec["name"]}" --root {a.root}')
+    if spec.get("fragorder"):
+        print(f'next: python -I tools/mission_check.py --fragorder "{spec["name"]}" -v --root {a.root} && '
+              f'python -I tools/checkpoint_lint.py --fragorder "{spec["name"]}" --root {a.root}')
+    else:
+        print(f'next: python -I tools/mission_check.py --mission "{spec["name"]}" --root {a.root}')
 
 
 if __name__ == "__main__":
