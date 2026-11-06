@@ -520,7 +520,7 @@ Path aliases (as in `mission-builder.md`):
   - **`/mission-check`:** a frag-order name or dia-type → `mission_check --fragorder` + `checkpoint_lint --fragorder`,
     explained from `FRAGORDERS.md` / `CHECKPOINTS.md`.
   - Add to the checker. Tell the user to restart.
-- [ ] **11. Dry review of the agent file** by a general-purpose agent: it reads the file and the kit only, and lists
+- [x] **11. Dry review of the agent file** by a general-purpose agent: it reads the file and the kit only, and lists
   contradictions, missing anchors and steps the tools cannot do. Fix them. (Cheap; it catches prompt gaps before
   validation.)
 - [ ] **12. Validation + fix pass.** Run each scenario with a general-purpose agent that reads and follows the agent
@@ -610,3 +610,6 @@ Path aliases (as in `mission-builder.md`):
   incl. `luac -p`, report; hard rule: insert-only `FragOrder.lua`), `.claude/skills/fragorder/SKILL.md` (fork),
   `/mission-check` takes a frag-order name or dia-type; both registered in the checker. **Restart Claude Code** to
   load the new agent.
+- 2026-11-06 step 11: dry review by a general-purpose agent: 21 findings (1 blocker: unescaped pipes in the grep
+  recipes), all fixed in the prompt and the scaffold (new `kind: automat`; no clean / no `return true` in the branch
+  of a propagated order). Notes §11.

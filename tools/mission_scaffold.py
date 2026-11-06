@@ -37,10 +37,21 @@ Frag-order mode (spec key "fragorder": true; rules and anchors: docs/sw.models/F
                               wrapper measured on the existing initializers), returning true, "<task>"
                    read       an empty initializer (a reader must consume the order: TODO)
                    immediate  an initializer stub reading the parameters, a TODO effect, then cleanFragOrder
+                   automat    commander only: no initializer, an executeAutomatFragOrder branch (automat_branch is
+                              implied), automat models only
+                 FRAGORDERS.md §2 kinds -> "kind": (c) kernel, (a) task, (b) read, (f) immediate, (d) automat (or
+                 propagate / automat_branch on top of a unit kind), (e) task / immediate on a crowd task + crowd models
                  "after": the initializer key to insert after (default: the end of fragOrderTaskInitializers);
                  "propagate": true -> fragOrdersToBePropagated; "automat_branch": true -> a TODO branch in
-                 executeAutomatFragOrder; a new task (kinds kernel / task) -> a frago task skeleton, one stage,
-                 disable-when-done unless "ends": false, its behavior ("behavior", "priority", default 100000.0)
+                 executeAutomatFragOrder (for a propagated order it neither cleans nor returns true: propagation
+                 follows and cleans the commander's copy); a new task (kinds kernel / task) -> a frago task
+                 skeleton, one stage, disable-when-done unless "ends": false (an order ended by an opposite order),
+                 its behavior ("behavior", "priority", default 100000.0)
+  Frag-order spec keys: fragorder, kind, name, dia-type, task, dbs, category (+ new_category, fr_category), id,
+  without_mission, models_level, missions, after, propagate, automat_branch, description, stages, task_skeleton,
+  ends, behavior, priority, fr / sheet / sheet_fr, params (as above, plus task_param = the mission.<field> the
+  initializer fills, getter / wrap = integration.get<getter>Parameter and its ontology key, for a type no
+  initializer reads yet). An existing frag order cannot be re-scaffolded: add it to more models by hand.
 
 Spec keys (--example shows them; keys starting with _ are ignored):
   name, task                      required
@@ -858,13 +869,18 @@ EXAMPLE_FO = {
     "models_level": {"mildb": [], "worldwide-tests": []},
     "missions": {"mildb": {"Infantry platoon": ["COMMON - Move"]},
                  "worldwide-tests": {"Infantry platoon": ["COMMON - Move"]}},
-    "_after": "PauseMovement (insert the initializer after this key; default: end of the table)",
-    "_propagate": False,
-    "_automat_branch": False,
+    "after": "PauseMovement",
+    "_after": "insert the initializer after this related key (default: end of the table; FRAGORDERS.md §1 prefers next to a related entry)",
+    "propagate": False,
+    "automat_branch": False,
+    "ends": True,
+    "_ends": "new task skeleton only: false = ended by an opposite order or the mission stop",
+    "_new_task_keys": "stages [{label, fr}], behavior, priority, description, task_skeleton (default true)",
     "fr": {"name": "Attendre en un point"},
     "params": [
         {"name": "Delay", "dia-name": "delay", "type": "Integer", "optional": True, "task_param": "delay",
-         "fr": "Délai", "sheet": "Waiting time in seconds.", "sheet_fr": "Durée d'attente en secondes."},
+         "fr": "Délai", "sheet": "Waiting time in seconds.", "sheet_fr": "Durée d'attente en secondes.",
+         "_getter": "only for a type no initializer reads yet: \"getter\": \"Point\", \"wrap\": \"point\""},
     ],
     "sheet": {"context": ["Stops the agent's movement for a given time."], "behavior": [], "specific-cases": [],
               "comments": [], "mission-end": ["The order ends when the delay is over."]},
@@ -874,7 +890,7 @@ EXAMPLE_FO = {
 FO_TOP_KEYS = {"fragorder", "kind", "name", "dia-type", "task", "dbs", "category", "new_category", "id",
                "without_mission", "models_level", "missions", "after", "propagate", "automat_branch", "description",
                "stages", "task_skeleton", "ends", "behavior", "priority", "params"}
-FO_KINDS = ("kernel", "task", "read", "immediate")
+FO_KINDS = ("kernel", "task", "read", "immediate", "automat")
 MODEL_KINDS = ("unit", "automat", "crowd", "task-group")
 
 
@@ -982,6 +998,8 @@ def initializer_lines(kind, dt, task, params, canon, catalog):
 
 
 def edit_fragorder_lua(raw, reg, dt, init_lines, after, propagate, automat_branch):
+    """(propagate + automat_branch: the branch must not clean the order nor return true; FragOrder.lua's own
+    comment: the order is reused for the units, and propagation cleans the commander's copy.)"""
     """Insert entries into FragOrder.lua text (bottom to top, so the parser's line numbers stay valid)."""
     crlf = "\r\n" in raw
     lines = raw.replace("\r\n", "\n").split("\n")
@@ -1002,10 +1020,15 @@ def edit_fragorder_lua(raw, reg, dt, init_lines, after, propagate, automat_branc
         if j is None or lines[j] != "    end":
             raise SpecError("FragOrder.lua: executeAutomatFragOrder does not end its orderType chain with `    end` "
                             "before the mustBePropagate fallback: add the branch by hand")
-        lines[j:j] = [f'    elseif orderType == "{dt}" then',
-                      "        -- TODO: what the commander does: act, or forward to the subordinates with "
-                      "integration.SendMessage( \"StartTask\", … ) / meKnowledge:sendDynamicMessage( \"FragOrder\", … )",
-                      "        integration.cleanFragOrder( fragOrder )", "        return true"]
+        if propagate:
+            lines[j:j] = [f'    elseif orderType == "{dt}" then',
+                          "        -- TODO: what the commander does before propagation (do not clean the order nor "
+                          "return true: it is propagated to the subordinates next, FRAGORDERS.md §6)"]
+        else:
+            lines[j:j] = [f'    elseif orderType == "{dt}" then',
+                          "        -- TODO: what the commander does: act, or forward to the subordinates with "
+                          "integration.SendMessage( \"StartTask\", … ) / meKnowledge:sendDynamicMessage( \"FragOrder\", … )",
+                          "        integration.cleanFragOrder( fragOrder )", "        return true"]
     if propagate:
         name, ln = reg.propagated[-1]
         m = re.match(r'^(\s*"[^"]*")(\s*,)?(.*)$', lines[ln - 1])
@@ -1043,6 +1066,8 @@ def scaffold_fragorder(model, spec, sword_types):
             need(task, "kind task needs task")
         elif task:
             need(False, f"kind {kind} starts no task: drop \"task\"")
+        if kind == "automat":
+            spec = dict(spec, automat_branch=True)
     if errors:
         raise SpecError("\n".join(errors))
     dbs = spec.get("dbs") or list(model.dbs)
@@ -1066,7 +1091,7 @@ def scaffold_fragorder(model, spec, sword_types):
         need(dt not in reg.automat, f"executeAutomatFragOrder already tests {dt}")
     after = spec.get("after")
     if after:
-        need(kind != "kernel", "\"after\" places an initializer: kind kernel writes none")
+        need(kind not in ("kernel", "automat"), f"\"after\" places an initializer: kind {kind} writes none")
         need(after in reg.init, f"\"after\": no initializer {after} in FragOrder.lua")
     # params
     params = spec.get("params") or []
@@ -1154,6 +1179,12 @@ def scaffold_fragorder(model, spec, sword_types):
         if not wm:
             need(lvl[db.name] or msn[db.name], f"{db.name}: never available: without_mission is false and neither "
                                                "models_level nor missions lists a model")
+        if kind == "automat":
+            bad = [r[1] for r in lvl[db.name] + [x[0] for x in msn[db.name]] if r[0] != "automat"]
+            need(not bad, f"{db.name}: kind automat (no unit initializer): list it in automat models only, not {bad}")
+            if wm:
+                ed.notes.append(f"{db.name}: kind automat with without_mission: a unit or crowd that receives it reaches "
+                                "the kernel path with no task (FRAGORDERS.md §6)")
     # unknown keys
     lang_keys = {k for lang in langs for k in (lang, f"{lang}_category", f"sheet_{lang}")}
     for k in set(spec) - FO_TOP_KEYS - lang_keys - {"sheet", "fr_category", "sheet_fr", "fr"}:
@@ -1249,7 +1280,7 @@ def scaffold_fragorder(model, spec, sword_types):
             # images stay under the English name (measured on every fr frag-order sheet)
             ed.new(os.path.join(d, f"{stem}.html"), render_sheet_html(x, 2, f"./../../Images/{name}/"))
     # ---- FragOrder.lua
-    init_lines = initializer_lines(kind, dt, task, params, canon, catalog) if kind != "kernel" else []
+    init_lines = initializer_lines(kind, dt, task, params, canon, catalog) if kind not in ("kernel", "automat") else []
     if init_lines or spec.get("propagate") or spec.get("automat_branch"):
         ed.set(reg.path, edit_fragorder_lua(ed.get(reg.path), reg, dt, init_lines, after, spec.get("propagate"),
                                             spec.get("automat_branch")))

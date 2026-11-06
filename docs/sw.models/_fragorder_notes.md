@@ -289,3 +289,18 @@ Validated on a scratch copy of model ada (from master @ `d2f78fafcd`):
 - Getter table measured from the initializers (`getter_catalog`): e.g. Point → `getPointParameter` wrapped in
   `CreateKnowledge( …point, … )`, Integer / Enumeration → `getIntegerParameter`; a type no initializer reads needs
   `getter` / `wrap` in the spec.
+
+## 11. Step 11: dry review (general-purpose agent, read-only)
+
+21 items (1 blocker, 13 should-fix, 7 nits); all applied:
+- **Blocker**: the index grep recipes had unescaped pipes (`^| mildb |…` matches every line with rg / `grep -E`):
+  escaped, plus a line on BRE vs ERE.
+- Scaffold: new `kind: automat` (commander only, automat models only, no unit initializer); a branch on a
+  **propagated** order neither cleans nor returns true (the military commander ignores the return value and
+  propagates next; the security one stops on true; `FragOrder.lua` line 83 comment); `--help` lists every
+  frag-order key, the example now carries `after` / `propagate` / `automat_branch` / `ends` as real keys.
+- Prompt: scaffold kind ↔ FRAGORDERS kind mapping; a kind-(c) variant becomes kind (a); frozen branch → ask about
+  kind (a); unit task orders without mission → wrong-brain rule; design B only for kind (c); the Lua-side helper is
+  a proposal unless it exists (insert-only rule); client branches via the CHECKPOINTS §6 one-call recipe; adding an
+  existing order to models = hand edits after agreement; `--model`; XML parse command; `ant check`; on master run
+  clarify + critique, then stop.

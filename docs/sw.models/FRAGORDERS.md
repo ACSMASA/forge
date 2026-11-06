@@ -210,7 +210,7 @@ subordinates: a WARN when an automat model's subordinates all lack the order, a 
 5. **Physical files per DB**: Missions.xml, Models.xml (model-level or per mission, in unit / automat / crowd models;
    for propagation, the subordinate models too), Stages.xml (both DBs) for new labels, then mildb `.ts` files and
    sheets: `tools/mission_scaffold.py` frag-order mode (spec `"fragorder": true`, `--example fragorder`) writes all of
-   them and the `FragOrder.lua` entries of the kind (`kernel` none, `task`, `read`, `immediate`; `after`, `propagate`,
+   them and the `FragOrder.lua` entries of the kind (`kernel` none, `task`, `read`, `immediate`, `automat`; `after`, `propagate`,
    `automat_branch`), plus a frago task skeleton with a prioritized behavior.
 6. **`tools/mission_check.py --fragorder "<name>"`** and `tools/checkpoint_lint.py --fragorder "<name>"`; then
    `ant check` and `ant generate-database` in sw.models.
